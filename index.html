@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>SetList Ministério de Música</title>
+<title>SetList Ministério</title>
 <meta name="theme-color" content="#08080c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -23,10 +24,10 @@
   --text: #f5f5f7;
   --text-dim: #c7c7cc;
   --text-muted: #8e8e93;
-  --accent: #0a84ff;
+  --accent: #0a84ff; /* Azul iOS */
   --accent-light: #409cff;
   --accent-glow: rgba(10, 132, 255, 0.35);
-  --gold: #ffd60a;
+  --gold: #ffd60a; /* Amarelo iOS */
   --gold-glow: rgba(255, 214, 10, 0.4);
   --danger: #ff453a;
   --success: #30d158;
@@ -70,6 +71,7 @@ select {
   background-repeat: no-repeat; background-position: right 16px center; cursor: pointer; 
 }
 
+/* Background Premium */
 .bg-effects { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; background: var(--bg-deep); }
 .bg-orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.3; }
 .bg-orb-1 { width: 500px; height: 500px; top: -100px; left: -100px; background: var(--accent); animation: f1 20s ease-in-out infinite alternate; }
@@ -79,6 +81,7 @@ select {
 
 .app { position: relative; z-index: 1; max-width: 480px; margin: 0 auto; padding: 0 16px 140px; min-height: 100dvh; }
 
+/* Header */
 .header { padding: 20px 0 16px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
 .logo { display: flex; align-items: center; gap: 12px; }
 .logo-icon { width: 44px; height: 44px; border-radius: 14px; background: linear-gradient(135deg, var(--accent), #0050b3); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; box-shadow: 0 8px 24px var(--accent-glow); }
@@ -90,6 +93,7 @@ select {
 .h-btn:active { transform: scale(0.9); }
 .h-btn.active { color: var(--gold); border-color: var(--gold); box-shadow: 0 0 15px var(--gold-glow); }
 
+/* Status Bar */
 .conn-bar { 
   display: flex; align-items: center; justify-content: space-between; 
   background: var(--surface); border: 1px solid var(--border); 
@@ -105,14 +109,15 @@ select {
 .conn-info { display: flex; flex-direction: column; }
 .conn-status { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .conn-room { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #fff; font-weight: 700; margin-top: 2px; }
-.conn-right { font-size: 10px; color: var(--text-muted); font-weight: 600; }
 
+/* Search */
 .search-wrap { position: relative; margin-bottom: 24px; }
 .search-wrap i { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 14px; }
 .search-wrap input { padding-left: 44px; border-radius: 16px; height: 52px; font-size: 15px; backdrop-filter: blur(20px); background: var(--surface); border-color: var(--border); }
 .search-clear { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border-radius: 50%; background: var(--surface-2); border: none; color: var(--text-dim); font-size: 12px; display: none; align-items: center; justify-content: center; cursor: pointer; }
 .search-clear.show { display: flex; }
 
+/* Categories */
 .section-label { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
 .btn-add-cat { background: none; border: none; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; }
 
@@ -124,6 +129,7 @@ select {
 .chip.active .chip-cnt { background: rgba(0,0,0,0.15); }
 .chip-hint { font-size: 11px; color: var(--text-muted); margin: 0 0 24px; text-align: center; }
 
+/* List */
 .list-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .list-title { font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -1px; }
 .list-count { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--text-muted); font-weight: 700; background: var(--surface); padding: 6px 12px; border-radius: 100px; }
@@ -151,6 +157,7 @@ select {
 .fab { position: fixed; bottom: 30px; right: 24px; width: 60px; height: 60px; border-radius: 20px; background: var(--accent); color: #fff; border: none; font-size: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 60; box-shadow: 0 10px 30px var(--accent-glow); transition: transform 0.2s; }
 .fab:active { transform: scale(0.9) rotate(90deg); }
 
+/* Sheets (Bottom Sheets Style) */
 .overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); display: flex; align-items: flex-end; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
 .overlay.open { opacity: 1; pointer-events: all; }
 .sheet { background: var(--surface-solid); border: 1px solid var(--border); border-bottom: none; border-radius: 28px 28px 0 0; padding: 12px 20px 30px; width: 100%; max-width: 480px; max-height: 90dvh; overflow-y: auto; transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1); }
@@ -166,6 +173,7 @@ select {
 .btn-primary:disabled { opacity: 0.3; background: var(--surface-2); }
 .btn-sec { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); margin-top: 10px; }
 
+/* View Lyrics */
 .view-overlay { position: fixed; inset: 0; z-index: 200; background: var(--bg-deep); opacity: 0; pointer-events: none; transition: opacity 0.3s; display: flex; flex-direction: column; }
 .view-overlay.open { opacity: 1; pointer-events: all; }
 .view-header { padding: 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
@@ -182,6 +190,7 @@ select {
 .view-lyrics { font-size: 18px; line-height: 2; color: var(--text); white-space: pre-wrap; font-weight: 500; text-align: center; }
 .view-obs { margin-top: 30px; padding: 16px; background: var(--surface); border-radius: 16px; border-left: 4px solid var(--accent); font-size: 14px; color: var(--text-dim); line-height: 1.6; }
 
+/* Toasts */
 .toast-box { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 300; width: calc(100% - 32px); max-width: 400px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 .toast { background: var(--surface-solid); border: 1px solid var(--border-light); border-radius: 16px; padding: 14px 18px; font-size: 14px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); animation: tIn 0.3s ease; }
 .toast i { font-size: 16px; }
@@ -192,8 +201,6 @@ select {
 .toast.alert i { color: var(--gold); }
 @keyframes tIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
 .hidden { display: none !important; }
-
-.saving-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); margin-left: 6px; animation: pulse 1s infinite; }
 </style>
 </head>
 <body>
@@ -279,10 +286,9 @@ select {
       <div class="conn-dot sync" id="connDot"></div>
       <div class="conn-info">
         <div class="conn-status" id="connStatus">Conectando</div>
-        <div class="conn-room" id="connRoom">Banco de dados do ministério</div>
+        <div class="conn-room" id="connRoom">Ministério de Música</div>
       </div>
     </div>
-    <div class="conn-right" id="connRight"></div>
   </div>
 
   <div class="search-wrap">
@@ -316,29 +322,22 @@ select {
 (function() {
   "use strict";
 
-  // ================== BANCO DE DADOS (window.storage, compartilhado) ==================
-  // Todos que abrem este app compartilham os mesmos dados (categorias, músicas e avisos).
-  // Não há mais dependência de um broker MQTT público: os dados ficam salvos de verdade
-  // e continuam lá mesmo se todos saírem do app.
-  var KEY_DATA = 'setlist:data';
-  var KEY_ALERT = 'setlist:alert';
-  var POLL_MS = 4000;
-
-  var myId = 'user_' + Math.random().toString(36).slice(2, 9);
+  // A URL base é o próprio arquivo PHP
+  const API_URL = window.location.href.split('?')[0];
+  
   var data = { cats: [], songs: [], ts: 0 };
   var activeCat = "all";
   var searchTerm = "";
   var editingId = null;
-  var pollTimer = null;
-  var seenAlerts = new Set();
+
   var wakeLock = null;
-  var saving = false;
+  var seenAlerts = new Set();
 
   var $ = function(id) { return document.getElementById(id); };
 
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
-
+  
   function toast(msg, type) {
     type = type || 'ok';
     var t = document.createElement('div');
@@ -372,109 +371,91 @@ select {
     }
   });
 
-  // ---------- Camada de banco de dados ----------
+  function saveLocal() { localStorage.setItem('rcc_setlist_v2', JSON.stringify(data)); }
+  function loadLocal() { 
+    try { 
+      var d = JSON.parse(localStorage.getItem('rcc_setlist_v2')); 
+      if (d && Array.isArray(d.songs)) data = d; 
+    } catch(e) {} 
+  }
+
+  // ================== REDE E BANCO DE DADOS SQL ==================
   function setConnUI(status, sub, dotClass) {
     $('connStatus').textContent = status;
-    $('connRoom').textContent = sub || 'Banco de dados do ministério';
+    $('connRoom').textContent = sub || 'Ministério de Música';
     $('connDot').className = 'conn-dot ' + dotClass;
   }
 
-  async function dbLoad() {
+  async function loadFromServer() {
     try {
-      var res = await window.storage.get(KEY_DATA, true);
-      if (res && res.value) {
-        var remote = JSON.parse(res.value);
-        if (remote && Array.isArray(remote.songs) && Array.isArray(remote.cats)) return remote;
-      }
-    } catch (e) {
-      // chave ainda não existe (primeiro uso) — trata como banco vazio
-    }
-    return null;
-  }
-
-  async function dbSave(d) {
-    try {
-      var res = await window.storage.set(KEY_DATA, JSON.stringify(d), true);
-      return !!res;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  async function initDatabase() {
-    setConnUI('Conectando', 'Carregando dados salvos...', 'sync');
-    var remote = await dbLoad();
-    if (remote) {
-      data = remote;
-      render();
-    }
-    setConnUI('Sincronizado', 'Banco de dados do ministério', 'on');
-    startPolling();
-    window.addEventListener('online', function() { setConnUI('Sincronizado', 'Conexão restabelecida', 'on'); pollForUpdates(); });
-    window.addEventListener('offline', function() { setConnUI('Offline', 'Sem conexão — alterações serão salvas ao reconectar', 'err'); });
-  }
-
-  function startPolling() {
-    if (pollTimer) clearInterval(pollTimer);
-    pollTimer = setInterval(pollForUpdates, POLL_MS);
-  }
-
-  async function pollForUpdates() {
-    if (saving) return; // evita sobrescrever uma gravação em andamento
-    try {
-      var remote = await dbLoad();
-      if (remote && remote.ts > data.ts) {
-        data = remote;
+      const res = await fetch(API_URL + '?action=load&t=' + Date.now());
+      if (!res.ok) throw new Error('Erro de rede');
+      const serverData = await res.json();
+      
+      if (serverData.cats && serverData.songs) {
+        data = serverData;
+        data.ts = Date.now();
+        saveLocal();
         render();
+        setConnUI('Online', 'Ministério de Música', 'on');
       }
-      setConnUI('Sincronizado', 'Banco de dados do ministério', 'on');
-      await checkAlert();
-    } catch (e) {
-      setConnUI('Erro', 'Falha ao sincronizar', 'err');
+    } catch(e) {
+      setConnUI('Offline', 'Verificando conexão...', 'err');
     }
-  }
-
-  async function checkAlert() {
-    try {
-      var res = await window.storage.get(KEY_ALERT, true);
-      if (res && res.value) {
-        var a = JSON.parse(res.value);
-        if (a && a.alertId && !seenAlerts.has(a.alertId)) {
-          seenAlerts.add(a.alertId);
-          if (a.id !== myId) toast(a.msg, 'alert');
-        }
-      }
-    } catch (e) {}
   }
 
   async function syncData() {
-    data.ts = Date.now();
-    render(); // otimista: atualiza a tela na hora
-    saving = true;
-    setConnUI('Salvando', 'Gravando no banco de dados...', 'sync');
-    var ok = await dbSave(data);
-    saving = false;
-    if (ok) {
-      setConnUI('Sincronizado', 'Banco de dados do ministério', 'on');
-    } else {
-      setConnUI('Erro', 'Não foi possível salvar — tentando novamente', 'err');
-      toast('Falha ao salvar. Verifique sua conexão.', 'err');
+    saveLocal();
+    render();
+    setConnUI('Sincronizando', 'Enviando dados...', 'sync');
+    try {
+      await fetch(API_URL + '?action=sync', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+      });
+      setConnUI('Online', 'Ministério de Música', 'on');
+    } catch(e) {
+      setConnUI('Erro', 'Falha ao salvar', 'err');
+      toast('Erro de conexão ao salvar', 'err');
     }
   }
 
-  // ================== ALERTAS ==================
-  $('btnAlert').addEventListener('click', async function() {
+  let lastAlertCheck = Math.floor(Date.now() / 1000);
+  
+  async function checkAlerts() {
+    try {
+      const res = await fetch(API_URL + '?action=get_alerts&since=' + lastAlertCheck);
+      const alerts = await res.json();
+      if (Array.isArray(alerts)) {
+        alerts.forEach(a => {
+          if (!seenAlerts.has(a.id)) {
+            seenAlerts.add(a.id);
+            toast(a.msg, 'alert');
+          }
+        });
+        lastAlertCheck = Math.floor(Date.now() / 1000);
+      }
+    } catch(e) {}
+  }
+
+  async function sendAlert(msg) {
+    const alertId = uid();
+    seenAlerts.add(alertId);
+    toast(msg, 'alert');
+    try {
+      await fetch(API_URL + '?action=send_alert', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id: alertId, msg: msg })
+      });
+    } catch(e) { toast('Falha ao enviar aviso', 'err'); }
+  }
+
+  $('btnAlert').addEventListener('click', function() {
     var msg = prompt("Enviar aviso para a banda:");
     if (msg && msg.trim()) {
-      msg = msg.trim();
-      var alertId = uid();
-      seenAlerts.add(alertId);
-      toast(msg, 'alert');
-      try {
-        await window.storage.set(KEY_ALERT, JSON.stringify({ msg: msg, alertId: alertId, id: myId, ts: Date.now() }), true);
-      } catch (e) {
-        toast('Falha ao enviar aviso', 'err');
-      }
+      sendAlert(msg.trim());
     }
   });
 
@@ -486,21 +467,21 @@ select {
     all.innerHTML = 'Todas <span class="chip-cnt">' + data.songs.length + '</span>';
     all.addEventListener('click', function() { activeCat = 'all'; renderSongs(); renderChips(); });
     el.appendChild(all);
-
+    
     data.cats.forEach(function(c) {
       var ch = document.createElement('div');
       ch.className = 'chip' + (activeCat === c.id ? ' active' : '');
       var cnt = data.songs.filter(function(s) { return s.catId === c.id; }).length;
       ch.innerHTML = esc(c.name) + ' <span class="chip-cnt">' + cnt + '</span>';
-
+      
       var timer = null;
-      ch.addEventListener('touchstart', function() {
-        timer = setTimeout(function() { deleteCat(c.id); }, 500);
+      ch.addEventListener('touchstart', function() { 
+        timer = setTimeout(function() { deleteCat(c.id); }, 500); 
       }, { passive: true });
-      ch.addEventListener('touchend', function(e) {
-        clearTimeout(timer);
-        activeCat = c.id; renderSongs(); renderChips();
-        e.preventDefault();
+      ch.addEventListener('touchend', function(e) { 
+        clearTimeout(timer); 
+        activeCat = c.id; renderSongs(); renderChips(); 
+        e.preventDefault(); 
       });
       ch.addEventListener('touchmove', function() { clearTimeout(timer); }, { passive: true });
       ch.addEventListener('contextmenu', function(e) { e.preventDefault(); deleteCat(c.id); });
@@ -534,7 +515,7 @@ select {
       var card = document.createElement('div');
       card.className = 'song-card';
       card.style.animationDelay = (i * 0.03) + 's';
-
+      
       var lyrIco = hasLyrics ? '<i class="fa-solid fa-align-left"></i>' : '';
       var artistH = s.artist ? '<div class="sc-artist">' + lyrIco + esc(s.artist) + '</div>' : (hasLyrics ? '<div class="sc-artist">' + lyrIco + 'Letra disponível</div>' : '');
 
@@ -583,7 +564,7 @@ select {
     if (!s) return;
     var cat = data.cats.find(function(c) { return c.id === s.catId; });
     var hasLyrics = !!(s.letra && s.letra.trim());
-
+    
     $('viewTitle').textContent = s.name || 'Música';
     var html = '<div class="view-info">';
     html += '<div class="view-tom"><span>' + esc(s.tom) + '</span><small>tom</small></div>';
@@ -591,12 +572,12 @@ select {
     if (s.artist) html += '<p>' + esc(s.artist) + '</p>';
     if (cat) html += '<div class="view-tag">' + esc(cat.name) + '</div>';
     html += '</div></div>';
-
+    
     if (hasLyrics) html += '<div class="view-lyrics">' + esc(s.letra) + '</div>';
     else html += '<div class="view-lyrics" style="opacity:0.4;">Sem letra cadastrada.</div>';
-
+    
     if (s.obs) html += '<div class="view-obs"><strong>Obs:</strong> ' + esc(s.obs) + '</div>';
-
+    
     $('viewContent').innerHTML = html;
     $('viewContent').scrollTop = 0;
     $('ovView').classList.add('open');
@@ -613,12 +594,12 @@ select {
 
   // ================== CRUD ==================
   function addCat(name) { data.cats.push({ id: uid(), name: name.trim() }); syncData(); }
-  function deleteCat(id) {
+  function deleteCat(id) { 
     if (!confirm('Excluir categoria e suas músicas?')) return;
-    data.cats = data.cats.filter(function(c) { return c.id !== id; });
-    data.songs = data.songs.filter(function(s) { return s.catId !== id; });
-    if (activeCat === id) activeCat = 'all';
-    syncData(); toast('Categoria removida', 'ok');
+    data.cats = data.cats.filter(function(c) { return c.id !== id; }); 
+    data.songs = data.songs.filter(function(s) { return s.catId !== id; }); 
+    if (activeCat === id) activeCat = 'all'; 
+    syncData(); toast('Categoria removida', 'ok'); 
   }
 
   // ================== EVENTS ==================
@@ -669,20 +650,20 @@ select {
   $('fab').addEventListener('click', function() { openSong(null); });
   $('btnCancelSong').addEventListener('click', closeSong);
   $('ovSong').addEventListener('click', function(e) { if (e.target === $('ovSong')) closeSong(); });
-
+  
   function checkForm() { $('btnSaveSong').disabled = !($('inName').value.trim() && $('inTom').value.trim()); }
   $('inName').addEventListener('input', checkForm);
   $('inTom').addEventListener('input', checkForm);
-
+  
   $('btnSaveSong').addEventListener('click', function() {
     var name = $('inName').value.trim(), tom = $('inTom').value.trim();
     if (!name || !tom) return;
     var catId = $('inCat').value;
     if (!catId && data.cats.length > 0) catId = data.cats[0].id;
-    var payload = {
-      name: name, tom: tom, artist: $('inArtist').value.trim(),
-      obs: $('inObs').value.trim(), letra: $('inLetra').value.trim(),
-      catId: catId || '', order: parseInt($('inOrd').value) || 0
+    var payload = { 
+      name: name, tom: tom, artist: $('inArtist').value.trim(), 
+      obs: $('inObs').value.trim(), letra: $('inLetra').value.trim(), 
+      catId: catId || '', order: parseInt($('inOrd').value) || 0 
     };
     if (editingId) {
       var s = data.songs.find(function(x) { return x.id === editingId; });
@@ -696,33 +677,32 @@ select {
     toast('Música salva', 'ok');
   });
 
-  // PDF Export
   $('btnPdf').addEventListener('click', function() {
     if (!data.songs.length) { toast('Sem músicas', 'err'); return; }
     var jsPDF = window.jspdf.jsPDF;
     var doc = new jsPDF({ unit: 'mm', format: 'a4' });
     var pw = doc.internal.pageSize.getWidth(), mg = 15, y = 15;
-
+    
     doc.setFillColor(8, 8, 12); doc.rect(0, 0, pw, 30, 'F');
     doc.setTextColor(10, 132, 255); doc.setFontSize(22); doc.setFont('helvetica', 'bold'); doc.text('SETLIST', mg, y);
     doc.setTextColor(142, 142, 147); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
     doc.text(new Date().toLocaleDateString('pt-BR'), pw - mg, y, { align: 'right' });
     y = 40;
-
+    
     var catsToPrint = activeCat === 'all' ? data.cats : data.cats.filter(function(c) { return c.id === activeCat; });
-
+    
     function printGroup(list, title) {
       if (y > 260) { doc.addPage(); y = 20; }
       doc.setFillColor(10, 132, 255); doc.rect(mg, y, pw-mg*2, 7, 'F');
       doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica','bold');
       doc.text(title.toUpperCase(), mg+4, y+5);
       y += 12;
-
+      
       list.sort(function(a,b) { return (a.order||999)-(b.order||999); }).forEach(function(s, i) {
         if (y > 275) { doc.addPage(); y = 20; }
         doc.setTextColor(245, 245, 247); doc.setFontSize(12); doc.setFont('helvetica','bold');
         doc.text(s.name, mg+4, y+3);
-        doc.setTextColor(255, 214, 10);
+        doc.setTextColor(255, 214, 10); 
         var tw = doc.getTextWidth(s.tom);
         doc.text(s.tom, pw-mg-tw, y+3);
         if (s.artist) {
@@ -738,13 +718,23 @@ select {
 
     if (!catsToPrint.length) printGroup(data.songs, 'Geral');
     else catsToPrint.forEach(function(cat) { var cs = data.songs.filter(function(s) { return s.catId === cat.id; }); if (cs.length) printGroup(cs, cat.name); });
-
+    
     doc.save('SetList.pdf'); toast('PDF gerado', 'ok');
   });
 
   // ================== INIT ==================
+  loadLocal();
   render();
-  initDatabase();
+  loadFromServer();
+  
+  // Sincroniza a cada 5 segundos caso não haja modais abertos (evita sobrescrever edição)
+  setInterval(function() {
+    var isModalOpen = document.querySelector('.overlay.open') || document.querySelector('.view-overlay.open');
+    if (!isModalOpen) {
+      loadFromServer();
+    }
+    checkAlerts();
+  }, 5000);
 
 })();
 </script>
