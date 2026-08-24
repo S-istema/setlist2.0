@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SetList Ministério</title>
+<meta name="theme-color" content="#08080c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- Biblioteca do Banco de Dados SQL (AlaSQL) -->
+<script src="https://cdn.jsdelivr.net/npm/alasql@3.3.0/dist/alasql.min.js"></script>
+<style>
+:root {
+  --bg-deep: #08080c;
+  --bg: #100c14;
+  --surface: rgba(30, 30, 36, 0.7);
+  --surface-2: rgba(45, 45, 52, 0.9);
+  --surface-solid: #18141c;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(255, 255, 255, 0.15);
+  --text: #f5f5f7;
+  --text-dim: #c7c7cc;
+  --text-muted: #8e8e93;
+  --accent: #0a84ff; 
+  --accent-light: #409cff;
+  --accent-glow: rgba(10, 132, 255, 0.35);
+  --gold: #ffd60a; 
+  --gold-glow: rgba(255, 214, 10, 0.4);
+  --danger: #ff453a;
+  --success: #30d158;
+  --r: 24px;
+  --r-sm: 16px;
+  --r-xs: 12px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { 
+  background: var(--bg-deep); 
+  color: var(--text); 
+  font-family: 'Inter', system-ui, sans-serif; 
+  min-height: 100dvh; 
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+::-webkit-scrollbar { width: 0px; height: 0px; }
+::selection { background: var(--accent); color: #fff; }
+
+input, textarea, button, select { font-family: inherit; font-size: inherit; outline: none; }
+input, textarea, select { 
+  background: var(--surface-2); 
+  border: 1px solid var(--border); 
+  color: var(--text); 
+  border-radius: var(--r-xs); 
+  padding: 16px; 
+  width: 100%; 
+  transition: all 0.2s; 
+  font-weight: 500;
+}
+input:focus, textarea:focus, select:focus { 
+  border-color: var(--accent); 
+  box-shadow: 0 0 0 3px var(--accent-glow); 
+  background: rgba(0,0,0,0.4); 
+}
+input::placeholder, textarea::placeholder { color: var(--text-muted); }
+select { 
+  appearance: none; 
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); 
+  background-repeat: no-repeat; background-position: right 16px center; cursor: pointer; 
+}
+
+.bg-effects { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; background: var(--bg-deep); }
+.bg-orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.3; }
+.bg-orb-1 { width: 500px; height: 500px; top: -100px; left: -100px; background: var(--accent); animation: f1 20s ease-in-out infinite alternate; }
+.bg-orb-2 { width: 400px; height: 400px; bottom: -50px; right: -50px; background: #5e5ce6; animation: f2 25s ease-in-out infinite alternate; }
+@keyframes f1 { to { transform: translate(100px, 50px) scale(1.2); } }
+@keyframes f2 { to { transform: translate(-50px, -50px) scale(1.1); } }
+
+.app { position: relative; z-index: 1; max-width: 480px; margin: 0 auto; padding: 0 16px 140px; min-height: 100dvh; }
+
+.header { padding: 20px 0 16px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+.logo { display: flex; align-items: center; gap: 12px; }
+.logo-icon { width: 44px; height: 44px; border-radius: 14px; background: linear-gradient(135deg, var(--accent), #0050b3); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; box-shadow: 0 8px 24px var(--accent-glow); }
+.logo-text strong { font-weight: 800; font-size: 20px; color: #fff; letter-spacing: -0.5px; display: block; }
+.logo-text small { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+
+.header-actions { display: flex; gap: 8px; }
+.h-btn { width: 44px; height: 44px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); color: var(--text-dim); font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+.h-btn:active { transform: scale(0.9); }
+.h-btn.active { color: var(--gold); border-color: var(--gold); box-shadow: 0 0 15px var(--gold-glow); }
+
+.conn-bar { 
+  display: flex; align-items: center; justify-content: space-between; 
+  background: var(--surface); border: 1px solid var(--border); 
+  border-radius: 100px; padding: 12px 20px; margin-bottom: 24px; 
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); 
+}
+.conn-left { display: flex; align-items: center; gap: 12px; }
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); position: relative; }
+.conn-dot.on { background: var(--success); box-shadow: 0 0 10px var(--success); }
+.conn-info { display: flex; flex-direction: column; }
+.conn-status { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.conn-room { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #fff; font-weight: 700; margin-top: 2px; }
+
+.search-wrap { position: relative; margin-bottom: 24px; }
+.search-wrap i { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 14px; }
+.search-wrap input { padding-left: 44px; border-radius: 16px; height: 52px; font-size: 15px; backdrop-filter: blur(20px); background: var(--surface); border-color: var(--border); }
+.search-clear { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border-radius: 50%; background: var(--surface-2); border: none; color: var(--text-dim); font-size: 12px; display: none; align-items: center; justify-content: center; cursor: pointer; }
+.search-clear.show { display: flex; }
+
+.section-label { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+.btn-add-cat { background: none; border: none; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+
+.chips-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 12px; margin-bottom: 8px; scroll-snap-type: x mandatory; }
+.chip { flex-shrink: 0; scroll-snap-align: start; padding: 10px 16px; border-radius: 100px; font-size: 14px; font-weight: 600; background: var(--surface); border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+.chip:active { transform: scale(0.95); }
+.chip.active { background: #fff; border-color: #fff; color: #000; }
+.chip-cnt { font-family: 'JetBrains Mono', monospace; font-size: 10px; background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 100px; }
+.chip.active .chip-cnt { background: rgba(0,0,0,0.15); }
+.chip-hint { font-size: 11px; color: var(--text-muted); margin: 0 0 24px; text-align: center; }
+
+.list-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.list-title { font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -1px; }
+.list-count { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--text-muted); font-weight: 700; background: var(--surface); padding: 6px 12px; border-radius: 100px; }
+
+.song-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm); margin-bottom: 12px; position: relative; overflow: hidden; animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; transition: transform 0.1s; cursor: pointer; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+.song-card:active { transform: scale(0.98); }
+@keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+.sc-body { padding: 16px; display: flex; align-items: center; gap: 14px; }
+.tom-badge { flex-shrink: 0; width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(135deg, var(--gold), #ff9500); display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(255, 149, 0, 0.3); }
+.tom-badge span { font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 18px; color: #000; line-height: 1; }
+.tom-badge small { font-size: 7px; font-weight: 800; color: rgba(0,0,0,0.6); text-transform: uppercase; margin-top: 2px; }
+.sc-info { flex: 1; min-width: 0; }
+.sc-name { font-size: 17px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-artist { font-size: 13px; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+.sc-artist i { color: var(--gold); font-size: 9px; }
+
+.sc-actions { display: flex; gap: 8px; }
+.btn-ico { background: transparent; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 8px; border-radius: 8px; transition: background 0.2s; }
+.btn-ico:active { background: rgba(255,255,255,0.1); }
+
+.empty { text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 15px; }
+.empty i { font-size: 36px; display: block; margin-bottom: 16px; color: var(--border-light); }
+
+.fab { position: fixed; bottom: 30px; right: 24px; width: 60px; height: 60px; border-radius: 20px; background: var(--accent); color: #fff; border: none; font-size: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 60; box-shadow: 0 10px 30px var(--accent-glow); transition: transform 0.2s; }
+.fab:active { transform: scale(0.9) rotate(90deg); }
+
+.overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); display: flex; align-items: flex-end; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+.overlay.open { opacity: 1; pointer-events: all; }
+.sheet { background: var(--surface-solid); border: 1px solid var(--border); border-bottom: none; border-radius: 28px 28px 0 0; padding: 12px 20px 30px; width: 100%; max-width: 480px; max-height: 90dvh; overflow-y: auto; transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1); }
+.overlay.open .sheet { transform: translateY(0); }
+.handle { width: 40px; height: 4px; background: var(--border-light); border-radius: 4px; margin: 0 auto 20px; }
+.sheet-title { font-size: 24px; font-weight: 800; margin-bottom: 24px; color: #fff; display: flex; align-items: center; gap: 12px; }
+.field { margin-bottom: 16px; }
+.field-lbl { display: block; font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 8px; padding-left: 4px; }
+.row { display: grid; gap: 12px; }
+.row-2-1 { grid-template-columns: 2fr 1fr; }
+.btn { display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; font-size: 16px; border: none; border-radius: 16px; padding: 16px; width: 100%; cursor: pointer; transition: all 0.15s; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:disabled { opacity: 0.3; background: var(--surface-2); }
+.btn-sec { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); margin-top: 10px; }
+
+.view-overlay { position: fixed; inset: 0; z-index: 200; background: var(--bg-deep); opacity: 0; pointer-events: none; transition: opacity 0.3s; display: flex; flex-direction: column; }
+.view-overlay.open { opacity: 1; pointer-events: all; }
+.view-header { padding: 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+.view-title { font-size: 18px; font-weight: 700; color: #fff; flex: 1; text-align: center; }
+.view-close { width: 40px; height: 40px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); color: var(--text-dim); font-size: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.view-content { flex: 1; overflow-y: auto; padding: 30px 24px; -webkit-overflow-scrolling: touch; }
+.view-info { text-align: center; margin-bottom: 30px; }
+.view-tom { width: 70px; height: 70px; border-radius: 20px; background: linear-gradient(135deg, var(--gold), #ff9500); display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0 auto 16px; box-shadow: 0 8px 25px rgba(255, 149, 0, 0.3); }
+.view-tom span { font-family: 'JetBrains Mono', monospace; font-weight: 900; font-size: 24px; color: #000; }
+.view-tom small { font-size: 9px; font-weight: 700; color: rgba(0,0,0,0.6); text-transform: uppercase; }
+.view-meta h1 { font-size: 24px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+.view-meta p { font-size: 14px; color: var(--accent-light); }
+.view-tag { display: inline-block; margin-top: 8px; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 100px; background: var(--surface-2); color: var(--text-dim); }
+.view-lyrics { font-size: 18px; line-height: 2; color: var(--text); white-space: pre-wrap; font-weight: 500; text-align: center; }
+.view-obs { margin-top: 30px; padding: 16px; background: var(--surface); border-radius: 16px; border-left: 4px solid var(--accent); font-size: 14px; color: var(--text-dim); line-height: 1.6; }
+
+.toast-box { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 300; width: calc(100% - 32px); max-width: 400px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { background: var(--surface-solid); border: 1px solid var(--border-light); border-radius: 16px; padding: 14px 18px; font-size: 14px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); animation: tIn 0.3s ease; }
+.toast i { font-size: 16px; }
+.toast.ok i { color: var(--success); }
+.toast.err i { color: var(--danger); }
+.toast.info i { color: var(--text-muted); }
+@keyframes tIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="bg-effects"><div class="bg-orb bg-orb-1"></div><div class="bg-orb bg-orb-2"></div></div>
+<div class="toast-box" id="toasts"></div>
+
+<div class="overlay" id="ovCat">
+  <div class="sheet">
+    <div class="handle"></div>
+    <div class="sheet-title"><i class="fa-solid fa-tags"></i> Nova Categoria</div>
+    <div class="field">
+      <label class="field-lbl">Nome</label>
+      <input type="text" id="inCatName" placeholder="Ex: Louvor, Adoração...">
+    </div>
+    <button class="btn btn-primary" id="btnSaveCat">Criar</button>
+    <button class="btn btn-sec" id="btnCancelCat">Cancelar</button>
+  </div>
+</div>
+
+<div class="overlay" id="ovSong">
+  <div class="sheet">
+    <div class="handle"></div>
+    <div class="sheet-title" id="songSheetTitle"><i class="fa-solid fa-music"></i> Nova Música</div>
+    <div class="field">
+      <label class="field-lbl">Nome da Música</label>
+      <input type="text" id="inName" placeholder="Nome">
+    </div>
+    <div class="field row row-2-1">
+      <div><label class="field-lbl">Tom</label><input type="text" id="inTom" placeholder="Ex: C, Am..."></div>
+      <div><label class="field-lbl">Ordem</label><input type="number" id="inOrd" placeholder="#"></div>
+    </div>
+    <div class="field">
+      <label class="field-lbl">Artista</label>
+      <input type="text" id="inArtist" placeholder="Opcional">
+    </div>
+    <div class="field">
+      <label class="field-lbl">Categoria</label>
+      <select id="inCat"></select>
+    </div>
+    <div class="field">
+      <label class="field-lbl">Letra</label>
+      <textarea id="inLetra" rows="6" placeholder="Cole a letra aqui..."></textarea>
+    </div>
+    <div class="field">
+      <label class="field-lbl">Observação</label>
+      <textarea id="inObs" rows="2" placeholder="Opcional"></textarea>
+    </div>
+    <button class="btn btn-primary" id="btnSaveSong" disabled>Salvar</button>
+    <button class="btn btn-sec" id="btnCancelSong">Cancelar</button>
+  </div>
+</div>
+
+<div class="view-overlay" id="ovView">
+  <div class="view-header">
+    <div class="view-title" id="viewTitle">Música</div>
+    <button class="view-close" id="btnCloseView"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div class="view-content" id="viewContent"></div>
+</div>
+
+<div class="app">
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon"><i class="fa-solid fa-dove"></i></div>
+      <div class="logo-text">
+        <strong>SetList</strong>
+        <small>Ministério</small>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="h-btn" id="btnWake"><i class="fa-solid fa-mug-hot"></i></button>
+      <button class="h-btn" id="btnPdf"><i class="fa-solid fa-file-pdf"></i></button>
+    </div>
+  </header>
+
+  <div class="conn-bar">
+    <div class="conn-left">
+      <div class="conn-dot" id="connDot"></div>
+      <div class="conn-info">
+        <div class="conn-status" id="connStatus">Carregando</div>
+        <div class="conn-room" id="connRoom">Banco de Dados</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="search-wrap">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <input type="text" id="inSearch" placeholder="Buscar música ou artista...">
+    <button class="search-clear" id="btnClearSearch"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+
+  <div class="section-label">
+    <span>Categorias</span>
+    <button class="btn-add-cat" id="btnOpenCat"><i class="fa-solid fa-plus"></i> Nova</button>
+  </div>
+  <div class="chips-scroll" id="chips"></div>
+  <div class="chip-hint">Pressione e segure uma categoria para excluí-la</div>
+
+  <div class="list-head">
+    <div class="list-title" id="listTitle">Músicas</div>
+    <div class="list-count" id="listCount">0</div>
+  </div>
+
+  <div id="songList"></div>
+  <div class="empty" id="emptyMsg">
+    <i class="fa-regular fa-folder-open"></i>
+    Nenhuma música adicionada.
+  </div>
+</div>
+
+<button class="fab" id="fab"><i class="fa-solid fa-plus"></i></button>
+
+<script>
+(function() {
+  "use strict";
+
+  // ================== BANCO DE DADOS SQL ==================
+  // Cria as tabelas no banco de dados local (AlaSQL)
+  alasql('CREATE TABLE IF NOT EXISTS cats (id STRING, name STRING)');
+  alasql('CREATE TABLE IF NOT EXISTS songs (id STRING, name STRING, tom STRING, artist STRING, catId STRING, letra STRING, obs STRING, song_order INT)');
+
+  var data = { cats: [], songs: [] };
+  var activeCat = "all";
+  var searchTerm = "";
+  var editingId = null;
+  var wakeLock = null;
+
+  var $ = function(id) { return document.getElementById(id); };
+
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+  
+  function toast(msg, type) {
+    type = type || 'ok';
+    var t = document.createElement('div');
+    t.className = 'toast ' + type;
+    var icon = type === 'err' ? 'fa-circle-xmark' : (type === 'info' ? 'fa-circle-info' : 'fa-circle-check');
+    t.innerHTML = '<i class="fa-solid ' + icon + '"></i>' + esc(msg);
+    $('toasts').appendChild(t);
+    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+    setTimeout(function() { if (t.parentNode) t.remove(); }, 3500);
+  }
+
+  async function toggleWakeLock() {
+    try {
+      if (wakeLock) {
+        await wakeLock.release();
+        wakeLock = null;
+        $('btnWake').classList.remove('active');
+        toast('Tela pode apagar', 'info');
+      } else {
+        wakeLock = await navigator.wakeLock.request('screen');
+        $('btnWake').classList.add('active');
+        toast('Tela sempre acesa', 'ok');
+        wakeLock.addEventListener('release', () => { $('btnWake').classList.remove('active'); });
+      }
+    } catch (err) {}
+  }
+  $('btnWake').addEventListener('click', toggleWakeLock);
+  document.addEventListener('visibilitychange', async () => {
+    if (wakeLock !== null && document.visibilityState === 'visible') {
+      try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+    }
+  });
+
+  // Carrega os dados do banco para a memória
+  function loadLocal() {
+    try {
+      var raw = localStorage.getItem('rcc_setlist_sql');
+      if (raw) {
+        var d = JSON.parse(raw);
+        if (d.cats) {
+          d.cats.forEach(function(c) {
+            alasql('INSERT INTO cats (id, name) VALUES (?, ?)', [c.id, c.name]);
+          });
+        }
+        if (d.songs) {
+          d.songs.forEach(function(s) {
+            alasql('INSERT INTO songs (id, name, tom, artist, catId, letra, obs, song_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
+              [s.id, s.name, s.tom, s.artist, s.catId, s.letra || '', s.obs || '', s.order || 0]);
+          });
+        }
+      }
+    } catch(e) { console.error("Erro ao carregar:", e); }
+  }
+
+  // Salva os dados do banco no dispositivo
+  function saveLocal() {
+    var cats = alasql('SELECT * FROM cats');
+    var songs = alasql('SELECT * FROM songs');
+    localStorage.setItem('rcc_setlist_sql', JSON.stringify({ cats: cats, songs: songs }));
+  }
+
+  function setConnUI(status, sub, dotClass) {
+    $('connStatus').textContent = status;
+    $('connRoom').textContent = sub || 'Banco de Dados Local';
+    $('connDot').className = 'conn-dot ' + dotClass;
+  }
+
+  function refreshData() {
+    data.cats = alasql('SELECT * FROM cats');
+    var rawSongs = alasql('SELECT * FROM songs');
+    // Converte song_order de volta para order para manter compatibilidade com o resto do código
+    data.songs = rawSongs.map(function(s) {
+      s.order = s.song_order;
+      return s;
+    });
+  }
+
+  function syncData() {
+    refreshData();
+    saveLocal();
+    render();
+  }
+
+  // ================== UI RENDERING ==================
+  function renderChips() {
+    var el = $('chips'); el.innerHTML = '';
+    var all = document.createElement('div');
+    all.className = 'chip' + (activeCat === 'all' ? ' active' : '');
+    all.innerHTML = 'Todas <span class="chip-cnt">' + data.songs.length + '</span>';
+    all.addEventListener('click', function() { activeCat = 'all'; renderSongs(); renderChips(); });
+    el.appendChild(all);
+    
+    data.cats.forEach(function(c) {
+      var ch = document.createElement('div');
+      ch.className = 'chip' + (activeCat === c.id ? ' active' : '');
+      var cnt = data.songs.filter(function(s) { return s.catId === c.id; }).length;
+      ch.innerHTML = esc(c.name) + ' <span class="chip-cnt">' + cnt + '</span>';
+      
+      var timer = null;
+      ch.addEventListener('touchstart', function() { 
+        timer = setTimeout(function() { deleteCat(c.id); }, 500); 
+      }, { passive: true });
+      ch.addEventListener('touchend', function(e) { 
+        clearTimeout(timer); 
+        activeCat = c.id; renderSongs(); renderChips(); 
+        e.preventDefault(); 
+      });
+      ch.addEventListener('touchmove', function() { clearTimeout(timer); }, { passive: true });
+      ch.addEventListener('contextmenu', function(e) { e.preventDefault(); deleteCat(c.id); });
+      el.appendChild(ch);
+    });
+  }
+
+  function updateCatSelect() {
+    var sel = $('inCat'), val = sel.value;
+    sel.innerHTML = '<option value="">Selecione...</option>';
+    data.cats.forEach(function(c) { var o = document.createElement('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
+    if (data.cats.find(function(c) { return c.id === val; })) sel.value = val;
+  }
+
+  function renderSongs() {
+    var list = getFiltered(), el = $('songList'); el.innerHTML = '';
+    $('emptyMsg').classList.toggle('hidden', list.length > 0);
+    $('listCount').textContent = list.length;
+    var catObj = data.cats.find(function(c) { return c.id === activeCat; });
+    $('listTitle').textContent = activeCat === 'all' ? 'Músicas' : (catObj ? catObj.name : 'Músicas');
+
+    if (list.length === 0 && searchTerm) {
+      $('emptyMsg').innerHTML = '<i class="fa-solid fa-magnifying-glass"></i>Nenhum resultado para "' + esc(searchTerm) + '".';
+      $('emptyMsg').classList.remove('hidden');
+    } else if (list.length === 0) {
+      $('emptyMsg').innerHTML = '<i class="fa-regular fa-folder-open"></i>Nenhuma música aqui.<br>Toque no <strong>+</strong> para adicionar.';
+    }
+
+    list.forEach(function(s, i) {
+      var hasLyrics = !!(s.letra && s.letra.trim());
+      var card = document.createElement('div');
+      card.className = 'song-card';
+      card.style.animationDelay = (i * 0.03) + 's';
+      
+      var lyrIco = hasLyrics ? '<i class="fa-solid fa-align-left"></i>' : '';
+      var artistH = s.artist ? '<div class="sc-artist">' + lyrIco + esc(s.artist) + '</div>' : (hasLyrics ? '<div class="sc-artist">' + lyrIco + 'Letra disponível</div>' : '');
+
+      card.innerHTML =
+        '<div class="sc-body">' +
+          '<div class="tom-badge"><span>' + esc(s.tom) + '</span><small>tom</small></div>' +
+          '<div class="sc-info"><div class="sc-name">' + esc(s.name) + '</div>' + artistH + '</div>' +
+          '<div class="sc-actions">' +
+            '<button class="btn-ico edit"><i class="fa-solid fa-pen"></i></button>' +
+            '<button class="btn-ico del"><i class="fa-solid fa-trash"></i></button>' +
+          '</div>' +
+        '</div>';
+
+      card.addEventListener('click', function(e) {
+        if (e.target.closest('.btn-ico')) return;
+        openView(s.id);
+      });
+      card.querySelector('.edit').addEventListener('click', function(e) { e.stopPropagation(); openSong(s.id); });
+      card.querySelector('.del').addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (confirm('Excluir esta música?')) {
+          alasql('DELETE FROM songs WHERE id = ?', [s.id]);
+          syncData(); toast('Música removida', 'ok');
+        }
+      });
+      el.appendChild(card);
+    });
+  }
+
+  function getFiltered() {
+    var list = activeCat === 'all' ? data.songs.slice() : data.songs.filter(function(s) { return s.catId === activeCat; });
+    if (searchTerm) {
+      list = list.filter(function(s) {
+        return (s.name && s.name.toLowerCase().indexOf(searchTerm) > -1) ||
+               (s.artist && s.artist.toLowerCase().indexOf(searchTerm) > -1);
+      });
+    }
+    return list.sort(function(a, b) { return (a.order || 999) - (b.order || 999); });
+  }
+
+  function render() { refreshData(); renderChips(); renderSongs(); updateCatSelect(); }
+
+  // ================== FULL SCREEN VIEW ==================
+  function openView(id) {
+    var s = data.songs.find(function(x) { return x.id === id; });
+    if (!s) return;
+    var cat = data.cats.find(function(c) { return c.id === s.catId; });
+    var hasLyrics = !!(s.letra && s.letra.trim());
+    
+    $('viewTitle').textContent = s.name || 'Música';
+    var html = '<div class="view-info">';
+    html += '<div class="view-tom"><span>' + esc(s.tom) + '</span><small>tom</small></div>';
+    html += '<div class="view-meta"><h1>' + esc(s.name) + '</h1>';
+    if (s.artist) html += '<p>' + esc(s.artist) + '</p>';
+    if (cat) html += '<div class="view-tag">' + esc(cat.name) + '</div>';
+    html += '</div></div>';
+    
+    if (hasLyrics) html += '<div class="view-lyrics">' + esc(s.letra) + '</div>';
+    else html += '<div class="view-lyrics" style="opacity:0.4;">Sem letra cadastrada.</div>';
+    
+    if (s.obs) html += '<div class="view-obs"><strong>Obs:</strong> ' + esc(s.obs) + '</div>';
+    
+    $('viewContent').innerHTML = html;
+    $('viewContent').scrollTop = 0;
+    $('ovView').classList.add('open');
+  }
+  function closeView() { $('ovView').classList.remove('open'); }
+  $('btnCloseView').addEventListener('click', closeView);
+
+  var lastTap = 0;
+  $('ovView').addEventListener('touchend', function(e) {
+    var now = Date.now();
+    if (now - lastTap < 300) closeView();
+    lastTap = now;
+  });
+
+  // ================== CRUD SQL ==================
+  function addCat(name) {
+    var id = uid();
+    alasql('INSERT INTO cats (id, name) VALUES (?, ?)', [id, name.trim()]);
+    syncData();
+  }
+  
+  function deleteCat(id) { 
+    if (!confirm('Excluir categoria e suas músicas?')) return;
+    alasql('DELETE FROM cats WHERE id = ?', [id]); 
+    alasql('DELETE FROM songs WHERE catId = ?', [id]); 
+    if (activeCat === id) activeCat = 'all'; 
+    syncData(); toast('Categoria removida', 'ok'); 
+  }
+
+  // ================== EVENTS ==================
+  $('inSearch').addEventListener('input', function() {
+    searchTerm = $('inSearch').value.trim().toLowerCase();
+    $('btnClearSearch').classList.toggle('show', searchTerm.length > 0);
+    renderSongs();
+  });
+  $('btnClearSearch').addEventListener('click', function() {
+    $('inSearch').value = ''; searchTerm = '';
+    $('btnClearSearch').classList.remove('show');
+    renderSongs();
+  });
+
+  function openCat() { $('ovCat').classList.add('open'); $('inCatName').value = ''; setTimeout(function() { $('inCatName').focus(); }, 300); }
+  function closeCat() { $('ovCat').classList.remove('open'); }
+  $('btnOpenCat').addEventListener('click', openCat);
+  $('btnCancelCat').addEventListener('click', closeCat);
+  $('ovCat').addEventListener('click', function(e) { if (e.target === $('ovCat')) closeCat(); });
+  $('inCatName').addEventListener('keydown', function(e) { if (e.key === 'Enter') $('btnSaveCat').click(); });
+  $('btnSaveCat').addEventListener('click', function() {
+    var n = $('inCatName').value.trim();
+    if (!n) { toast('Digite um nome', 'err'); return; }
+    addCat(n); closeCat(); toast('Categoria criada', 'ok');
+  });
+
+  function openSong(id) {
+    if (data.cats.length === 0) { toast('Crie uma categoria primeiro', 'err'); openCat(); return; }
+    updateCatSelect();
+    editingId = id || null;
+    if (editingId) {
+      var s = data.songs.find(function(x) { return x.id === editingId; });
+      if (s) {
+        $('songSheetTitle').innerHTML = '<i class="fa-solid fa-music"></i> Editar';
+        $('inName').value = s.name || ''; $('inTom').value = s.tom || ''; $('inOrd').value = s.order || '';
+        $('inArtist').value = s.artist || ''; $('inCat').value = s.catId || '';
+        $('inLetra').value = s.letra || ''; $('inObs').value = s.obs || '';
+      }
+    } else {
+      $('songSheetTitle').innerHTML = '<i class="fa-solid fa-music"></i> Nova Música';
+      $('inName').value = ''; $('inTom').value = ''; $('inOrd').value = '';
+      $('inArtist').value = ''; $('inCat').value = ''; $('inLetra').value = ''; $('inObs').value = '';
+    }
+    checkForm();
+    $('ovSong').classList.add('open');
+  }
+  function closeSong() { $('ovSong').classList.remove('open'); editingId = null; }
+  $('fab').addEventListener('click', function() { openSong(null); });
+  $('btnCancelSong').addEventListener('click', closeSong);
+  $('ovSong').addEventListener('click', function(e) { if (e.target === $('ovSong')) closeSong(); });
+  
+  function checkForm() { $('btnSaveSong').disabled = !($('inName').value.trim() && $('inTom').value.trim()); }
+  $('inName').addEventListener('input', checkForm);
+  $('inTom').addEventListener('input', checkForm);
+  
+  $('btnSaveSong').addEventListener('click', function() {
+    var name = $('inName').value.trim(), tom = $('inTom').value.trim();
+    if (!name || !tom) return;
+    var catId = $('inCat').value;
+    if (!catId && data.cats.length > 0) catId = data.cats[0].id;
+    var artist = $('inArtist').value.trim();
+    var obs = $('inObs').value.trim();
+    var letra = $('inLetra').value.trim();
+    var order = parseInt($('inOrd').value) || 0;
+
+    if (editingId) {
+      // SQL UPDATE
+      alasql('UPDATE songs SET name=?, tom=?, artist=?, catId=?, letra=?, obs=?, song_order=? WHERE id=?', 
+        [name, tom, artist, catId, letra, obs, order, editingId]);
+    } else {
+      // SQL INSERT
+      var newId = uid();
+      alasql('INSERT INTO songs (id, name, tom, artist, catId, letra, obs, song_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
+        [newId, name, tom, artist, catId, letra, obs, order]);
+    }
+    closeSong();
+    syncData();
+    toast('Música salva', 'ok');
+  });
+
+  // PDF Export
+  $('btnPdf').addEventListener('click', function() {
+    if (!data.songs.length) { toast('Sem músicas', 'err'); return; }
+    var jsPDF = window.jspdf.jsPDF;
+    var doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    var pw = doc.internal.pageSize.getWidth(), mg = 15, y = 15;
+    
+    doc.setFillColor(8, 8, 12); doc.rect(0, 0, pw, 30, 'F');
+    doc.setTextColor(10, 132, 255); doc.setFontSize(22); doc.setFont('helvetica', 'bold'); doc.text('SETLIST', mg, y);
+    doc.setTextColor(142, 142, 147); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
+    doc.text(new Date().toLocaleDateString('pt-BR'), pw - mg, y, { align: 'right' });
+    y = 40;
+    
+    var catsToPrint = activeCat === 'all' ? data.cats : data.cats.filter(function(c) { return c.id === activeCat; });
+    
+    function printGroup(list, title) {
+      if (y > 260) { doc.addPage(); y = 20; }
+      doc.setFillColor(10, 132, 255); doc.rect(mg, y, pw-mg*2, 7, 'F');
+      doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica','bold');
+      doc.text(title.toUpperCase(), mg+4, y+5);
+      y += 12;
+      
+      list.sort(function(a,b) { return (a.order||999)-(b.order||999); }).forEach(function(s, i) {
+        if (y > 275) { doc.addPage(); y = 20; }
+        doc.setTextColor(245, 245, 247); doc.setFontSize(12); doc.setFont('helvetica','bold');
+        doc.text(s.name, mg+4, y+3);
+        doc.setTextColor(255, 214, 10); 
+        var tw = doc.getTextWidth(s.tom);
+        doc.text(s.tom, pw-mg-tw, y+3);
+        if (s.artist) {
+          doc.setTextColor(142, 142, 147); doc.setFontSize(9); doc.setFont('helvetica','normal');
+          doc.text(s.artist, mg+4, y+8);
+          y += 14;
+        } else {
+          y += 11;
+        }
+      });
+      y += 8;
+    }
+
+    if (!catsToPrint.length) printGroup(data.songs, 'Geral');
+    else catsToPrint.forEach(function(cat) { var cs = data.songs.filter(function(s) { return s.catId === cat.id; }); if (cs.length) printGroup(cs, cat.name); });
+    
+    doc.save('SetList.pdf'); toast('PDF gerado', 'ok');
+  });
+
+  // ================== INIT ==================
+  loadLocal();
+  refreshData();
+  render();
+  setConnUI('Salvo', 'Banco de Dados Local', 'on');
+
+})();
+</script>
+</body>
+</html>
