@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SetList Ministério</title>
+<meta name="theme-color" content="#08080c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+<style>
+:root {
+  --bg-deep: #08080c;
+  --bg: #100c14;
+  --surface: rgba(30, 30, 36, 0.7);
+  --surface-2: rgba(45, 45, 52, 0.9);
+  --surface-solid: #18141c;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(255, 255, 255, 0.15);
+  --text: #f5f5f7;
+  --text-dim: #c7c7cc;
+  --text-muted: #8e8e93;
+  --accent: #0a84ff;
+  --accent-light: #409cff;
+  --accent-glow: rgba(10, 132, 255, 0.35);
+  --gold: #ffd60a;
+  --gold-glow: rgba(255, 214, 10, 0.4);
+  --danger: #ff453a;
+  --success: #30d158;
+  --r: 24px;
+  --r-sm: 16px;
+  --r-xs: 12px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { background: var(--bg-deep); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100dvh; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
+::-webkit-scrollbar { width: 0px; height: 0px; }
+::selection { background: var(--accent); color: #fff; }
+input, textarea, button, select { font-family: inherit; font-size: inherit; outline: none; }
+input, textarea, select { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: var(--r-xs); padding: 16px; width: 100%; transition: all 0.2s; font-weight: 500; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); background: rgba(0,0,0,0.4); }
+input::placeholder, textarea::placeholder { color: var(--text-muted); }
+select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 16px center; cursor: pointer; }
+
+/* Background */
+.bg-effects { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; background: var(--bg-deep); }
+.bg-orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.3; }
+.bg-orb-1 { width: 500px; height: 500px; top: -100px; left: -100px; background: var(--accent); animation: f1 20s ease-in-out infinite alternate; }
+.bg-orb-2 { width: 400px; height: 400px; bottom: -50px; right: -50px; background: #5e5ce6; animation: f2 25s ease-in-out infinite alternate; }
+@keyframes f1 { to { transform: translate(100px, 50px) scale(1.2); } }
+@keyframes f2 { to { transform: translate(-50px, -50px) scale(1.1); } }
+
+.app { position: relative; z-index: 1; max-width: 480px; margin: 0 auto; padding: 0 16px 140px; min-height: 100dvh; }
+
+/* ═══ AUTH SCREEN ═══ */
+.auth-screen { position: fixed; inset: 0; z-index: 500; background: var(--bg-deep); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; transition: opacity 0.4s, transform 0.4s; }
+.auth-screen.hide { opacity: 0; pointer-events: none; transform: scale(1.05); }
+.auth-logo { width: 80px; height: 80px; border-radius: 24px; background: linear-gradient(135deg, var(--accent), #0050b3); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 32px; box-shadow: 0 12px 40px var(--accent-glow); margin-bottom: 24px; }
+.auth-title { font-size: 32px; font-weight: 900; color: #fff; letter-spacing: -1px; margin-bottom: 4px; }
+.auth-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 36px; font-weight: 500; }
+.auth-form { width: 100%; max-width: 360px; }
+.auth-form .field { margin-bottom: 16px; }
+.auth-form .field-lbl { display: block; font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 8px; padding-left: 4px; }
+.auth-error { background: rgba(255, 69, 58, 0.15); border: 1px solid rgba(255, 69, 58, 0.3); border-radius: var(--r-xs); padding: 12px 16px; color: var(--danger); font-size: 13px; font-weight: 600; margin-bottom: 16px; display: none; align-items: center; gap: 8px; }
+.auth-error.show { display: flex; }
+.auth-toggle { text-align: center; margin-top: 20px; font-size: 14px; color: var(--text-muted); }
+.auth-toggle a { color: var(--accent); font-weight: 600; cursor: pointer; text-decoration: none; }
+.auth-toggle a:hover { text-decoration: underline; }
+
+/* Header */
+.header { padding: 20px 0 16px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+.logo { display: flex; align-items: center; gap: 12px; }
+.logo-icon { width: 44px; height: 44px; border-radius: 14px; background: linear-gradient(135deg, var(--accent), #0050b3); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; box-shadow: 0 8px 24px var(--accent-glow); }
+.logo-text strong { font-weight: 800; font-size: 20px; color: #fff; letter-spacing: -0.5px; display: block; }
+.logo-text small { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+.header-actions { display: flex; gap: 8px; }
+.h-btn { width: 44px; height: 44px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); color: var(--text-dim); font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+.h-btn:active { transform: scale(0.9); }
+.h-btn.active { color: var(--gold); border-color: var(--gold); box-shadow: 0 0 15px var(--gold-glow); }
+
+/* Conn Bar */
+.conn-bar { display: flex; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--border); border-radius: 100px; padding: 12px 20px; margin-bottom: 24px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+.conn-left { display: flex; align-items: center; gap: 12px; }
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+.conn-dot.on { background: var(--success); box-shadow: 0 0 10px var(--success); }
+.conn-dot.sync { background: var(--gold); animation: pulse 1.5s infinite; }
+.conn-dot.err { background: var(--danger); }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 214, 10, 0.4); } 70% { box-shadow: 0 0 0 8px rgba(255, 214, 10, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 214, 10, 0); } }
+.conn-info { display: flex; flex-direction: column; }
+.conn-status { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.conn-room { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #fff; font-weight: 700; margin-top: 2px; }
+
+/* User badge */
+.user-badge { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.user-avatar { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 800; }
+.user-name-sm { font-size: 12px; font-weight: 600; color: var(--text-dim); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Search */
+.search-wrap { position: relative; margin-bottom: 24px; }
+.search-wrap i { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 14px; }
+.search-wrap input { padding-left: 44px; border-radius: 16px; height: 52px; font-size: 15px; backdrop-filter: blur(20px); background: var(--surface); border-color: var(--border); }
+.search-clear { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border-radius: 50%; background: var(--surface-2); border: none; color: var(--text-dim); font-size: 12px; display: none; align-items: center; justify-content: center; cursor: pointer; }
+.search-clear.show { display: flex; }
+
+/* Categories */
+.section-label { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+.btn-add-cat { background: none; border: none; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+.chips-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 12px; margin-bottom: 8px; scroll-snap-type: x mandatory; }
+.chip { flex-shrink: 0; scroll-snap-align: start; padding: 10px 16px; border-radius: 100px; font-size: 14px; font-weight: 600; background: var(--surface); border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+.chip:active { transform: scale(0.95); }
+.chip.active { background: #fff; border-color: #fff; color: #000; }
+.chip-cnt { font-family: 'JetBrains Mono', monospace; font-size: 10px; background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 100px; }
+.chip.active .chip-cnt { background: rgba(0,0,0,0.15); }
+.chip-hint { font-size: 11px; color: var(--text-muted); margin: 0 0 24px; text-align: center; }
+
+/* List */
+.list-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.list-title { font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -1px; }
+.list-count { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--text-muted); font-weight: 700; background: var(--surface); padding: 6px 12px; border-radius: 100px; }
+.song-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm); margin-bottom: 12px; position: relative; overflow: hidden; animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; transition: transform 0.1s; cursor: pointer; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+.song-card:active { transform: scale(0.98); }
+@keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+.sc-body { padding: 16px; display: flex; align-items: center; gap: 14px; }
+.tom-badge { flex-shrink: 0; width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(135deg, var(--gold), #ff9500); display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(255, 149, 0, 0.3); }
+.tom-badge span { font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 18px; color: #000; line-height: 1; }
+.tom-badge small { font-size: 7px; font-weight: 800; color: rgba(0,0,0,0.6); text-transform: uppercase; margin-top: 2px; }
+.sc-info { flex: 1; min-width: 0; }
+.sc-name { font-size: 17px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-artist { font-size: 13px; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+.sc-artist i { color: var(--gold); font-size: 9px; }
+.sc-actions { display: flex; gap: 8px; }
+.btn-ico { background: transparent; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 8px; border-radius: 8px; transition: background 0.2s; }
+.btn-ico:active { background: rgba(255,255,255,0.1); }
+.empty { text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 15px; }
+.empty i { font-size: 36px; display: block; margin-bottom: 16px; color: var(--border-light); }
+.fab { position: fixed; bottom: 30px; right: 24px; width: 60px; height: 60px; border-radius: 20px; background: var(--accent); color: #fff; border: none; font-size: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 60; box-shadow: 0 10px 30px var(--accent-glow); transition: transform 0.2s; }
+.fab:active { transform: scale(0.9) rotate(90deg); }
+
+/* Sheets */
+.overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); display: flex; align-items: flex-end; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+.overlay.open { opacity: 1; pointer-events: all; }
+.sheet { background: var(--surface-solid); border: 1px solid var(--border); border-bottom: none; border-radius: 28px 28px 0 0; padding: 12px 20px 30px; width: 100%; max-width: 480px; max-height: 90dvh; overflow-y: auto; transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1); }
+.overlay.open .sheet { transform: translateY(0); }
+.handle { width: 40px; height: 4px; background: var(--border-light); border-radius: 4px; margin: 0 auto 20px; }
+.sheet-title { font-size: 24px; font-weight: 800; margin-bottom: 24px; color: #fff; display: flex; align-items: center; gap: 12px; }
+.field { margin-bottom: 16px; }
+.field-lbl { display: block; font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 8px; padding-left: 4px; }
+.row { display: grid; gap: 12px; }
+.row-2-1 { grid-template-columns: 2fr 1fr; }
+.btn { display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; font-size: 16px; border: none; border-radius: 16px; padding: 16px; width: 100%; cursor: pointer; transition: all 0.15s; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:disabled { opacity: 0.3; background: var(--surface-2); }
+.btn-sec { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); margin-top: 10px; }
+.btn-danger { background: rgba(255,69,58,0.15); color: var(--danger); border: 1px solid rgba(255,69,58,0.3); margin-top: 10px; }
+
+/* View Lyrics */
+.view-overlay { position: fixed; inset: 0; z-index: 200; background: var(--bg-deep); opacity: 0; pointer-events: none; transition: opacity 0.3s; display: flex; flex-direction: column; }
+.view-overlay.open { opacity: 1; pointer-events: all; }
+.view-header { padding: 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+.view-title { font-size: 18px; font-weight: 700; color: #fff; flex: 1; text-align: center; }
+.view-close { width: 40px; height: 40px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); color: var(--text-dim); font-size: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.view-content { flex: 1; overflow-y: auto; padding: 30px 24px; -webkit-overflow-scrolling: touch; }
+.view-info { text-align: center; margin-bottom: 30px; }
+.view-tom { width: 70px; height: 70px; border-radius: 20px; background: linear-gradient(135deg, var(--gold), #ff9500); display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0 auto 16px; box-shadow: 0 8px 25px rgba(255, 149, 0, 0.3); }
+.view-tom span { font-family: 'JetBrains Mono', monospace; font-weight: 900; font-size: 24px; color: #000; }
+.view-tom small { font-size: 9px; font-weight: 700; color: rgba(0,0,0,0.6); text-transform: uppercase; }
+.view-meta h1 { font-size: 24px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+.view-meta p { font-size: 14px; color: var(--accent-light); }
+.view-tag { display: inline-block; margin-top: 8px; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 100px; background: var(--surface-2); color: var(--text-dim); }
+.view-lyrics { font-size: 18px; line-height: 2; color: var(--text); white-space: pre-wrap; font-weight: 500; text-align: center; }
+.view-obs { margin-top: 30px; padding: 16px; background: var(--surface); border-radius: 16px; border-left: 4px solid var(--accent); font-size: 14px; color: var(--text-dim); line-height: 1.6; }
+
+/* Toasts */
+.toast-box { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 600; width: calc(100% - 32px); max-width: 400px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { background: var(--surface-solid); border: 1px solid var(--border-light); border-radius: 16px; padding: 14px 18px; font-size: 14px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); animation: tIn 0.3s ease; }
+.toast i { font-size: 16px; }
+.toast.ok i { color: var(--success); }
+.toast.err i { color: var(--danger); }
+.toast.info i { color: var(--text-muted); }
+.toast.alert { background: linear-gradient(135deg, rgba(255, 214, 10, 0.2), var(--surface-solid)); border-color: var(--gold); }
+.toast.alert i { color: var(--gold); }
+@keyframes tIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Loading spinner */
+.spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Tab bar inferior */
+.tab-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 55; background: var(--surface-solid); border-top: 1px solid var(--border); display: flex; justify-content: center; padding: 8px 0 env(safe-area-inset-bottom, 8px); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+.tab-bar-inner { display: flex; gap: 4px; max-width: 480px; width: 100%; }
+.tab-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; border-radius: 12px; cursor: pointer; transition: all 0.2s; color: var(--text-muted); background: none; border: none; font-family: inherit; }
+.tab-item.active { color: var(--accent); }
+.tab-item i { font-size: 20px; }
+.tab-item span { font-size: 10px; font-weight: 600; }
+
+.hidden { display: none !important; }
+
+/* Profile dropdown */
+.profile-sheet .profile-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+.profile-avatar-lg { width: 64px; height: 64px; border-radius: 20px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 24px; font-weight: 900; }
+.profile-name { font-size: 20px; font-weight: 800; color: #fff; }
+.profile-email { font-size: 13px; color: var(--text-muted); }
+.stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+.stat-card { background: var(--surface-2); border-radius: var(--r-xs); padding: 16px 12px; text-align: center; }
+.stat-num { font-family: 'JetBrains Mono', monospace; font-size: 24px; font-weight: 800; color: #fff; }
+.stat-lbl { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="bg-effects"><div class="bg-orb bg-orb-1"></div><div class="bg-orb bg-orb-2"></div></div>
+<div class="toast-box" id="toasts"></div>
+
+<!-- ═══ TELA DE LOGIN/CADASTRO ═══ -->
+<div class="auth-screen" id="authScreen">
+  <div class="auth-logo"><i class="fa-solid fa-dove"></i></div>
+  <div class="auth-title">SetList</div>
+  <div class="auth-sub">Ministério de Música</div>
+  <div class="auth-form">
+    <div class="auth-error" id="authError"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
+    <div class="field" id="fieldNameWrap">
+      <label class="field-lbl">Nome</label>
+      <input type="text" id="authName" placeholder="Seu nome">
+    </div>
+    <div class="field">
+      <label class="field-lbl">Email</label>
+      <input type="email" id="authEmail" placeholder="seu@email.com">
+    </div>
+    <div class="field">
+      <label class="field-lbl">Senha</label>
+      <input type="password" id="authPass" placeholder="Mínimo 4 caracteres">
+    </div>
+    <button class="btn btn-primary" id="btnAuthSubmit"><span id="authBtnText">Entrar</span></button>
+    <div class="auth-toggle" id="authToggle">Não tem conta? <a id="authToggleLink">Cadastre-se</a></div>
+  </div>
+</div>
+
+<!-- Modal Categoria -->
+<div class="overlay" id="ovCat">
+  <div class="sheet">
+    <div class="handle"></div>
+    <div class="sheet-title"><i class="fa-solid fa-tags"></i> Nova Categoria</div>
+    <div class="field">
+      <label class="field-lbl">Nome</label>
+      <input type="text" id="inCatName" placeholder="Ex: Louvor, Adoração...">
+    </div>
+    <button class="btn btn-primary" id="btnSaveCat">Criar</button>
+    <button class="btn btn-sec" id="btnCancelCat">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal Música -->
+<div class="overlay" id="ovSong">
+  <div class="sheet">
+    <div class="handle"></div>
+    <div class="sheet-title" id="songSheetTitle"><i class="fa-solid fa-music"></i> Nova Música</div>
+    <div class="field">
+      <label class="field-lbl">Nome da Música</label>
+      <input type="text" id="inName" placeholder="Nome">
+    </div>
+    <div class="field row row-2-1">
+      <div><label class="field-lbl">Tom</label><input type="text" id="inTom" placeholder="Ex: C, Am..."></div>
+      <div><label class="field-lbl">Ordem</label><input type="number" id="inOrd" placeholder="#"></div>
+    </div>
+    <div class="field">
+      <label class="field-lbl">Artista</label>
+      <input type="text" id="inArtist" placeholder="Opcional">
+    </div>
+    <div class="field">
+      <label class="field-lbl">Categoria</label>
+      <select id="inCat"></select>
+    </div>
+    <div class="field">
+      <label class="field-lbl">Letra</label>
+      <textarea id="inLetra" rows="6" placeholder="Cole a letra aqui..."></textarea>
+    </div>
+    <div class="field">
+      <label class="field-lbl">Observação</label>
+      <textarea id="inObs" rows="2" placeholder="Opcional"></textarea>
+    </div>
+    <button class="btn btn-primary" id="btnSaveSong" disabled>Salvar</button>
+    <button class="btn btn-sec" id="btnCancelSong">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal Perfil -->
+<div class="overlay" id="ovProfile">
+  <div class="sheet profile-sheet">
+    <div class="handle"></div>
+    <div class="profile-header">
+      <div class="profile-avatar-lg" id="profileAvatar">U</div>
+      <div>
+        <div class="profile-name" id="profileName">Usuário</div>
+        <div class="profile-email" id="profileEmail">email@email.com</div>
+      </div>
+    </div>
+    <div class="stat-grid" id="statGrid">
+      <div class="stat-card"><div class="stat-num" id="statSongs">0</div><div class="stat-lbl">Músicas</div></div>
+      <div class="stat-card"><div class="stat-num" id="statCats">0</div><div class="stat-lbl">Categorias</div></div>
+      <div class="stat-card"><div class="stat-num" id="statLyrics">0</div><div class="stat-lbl">Com letra</div></div>
+    </div>
+    <div class="field">
+      <label class="field-lbl">Alterar nome</label>
+      <input type="text" id="profileNameInput" placeholder="Novo nome">
+    </div>
+    <button class="btn btn-primary" id="btnUpdateProfile">Salvar nome</button>
+    <button class="btn btn-sec" id="btnExportJson"><i class="fa-solid fa-download"></i> Exportar backup JSON</button>
+    <button class="btn btn-sec" id="btnImportJson"><i class="fa-solid fa-upload"></i> Importar backup JSON</button>
+    <input type="file" id="fileImport" accept=".json" style="display:none">
+    <button class="btn btn-danger" id="btnLogout"><i class="fa-solid fa-right-from-bracket"></i> Sair da conta</button>
+    <button class="btn btn-sec" id="btnCloseProfile">Cancelar</button>
+  </div>
+</div>
+
+<!-- Tela Cheia Letra -->
+<div class="view-overlay" id="ovView">
+  <div class="view-header">
+    <div class="view-title" id="viewTitle">Música</div>
+    <button class="view-close" id="btnCloseView"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div class="view-content" id="viewContent"></div>
+</div>
+
+<div class="app" id="mainApp">
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon"><i class="fa-solid fa-dove"></i></div>
+      <div class="logo-text">
+        <strong>SetList</strong>
+        <small>Ministério</small>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="h-btn" id="btnAlert"><i class="fa-solid fa-bullhorn"></i></button>
+      <button class="h-btn" id="btnWake"><i class="fa-solid fa-mug-hot"></i></button>
+      <button class="h-btn" id="btnPdf"><i class="fa-solid fa-file-pdf"></i></button>
+    </div>
+  </header>
+
+  <div class="conn-bar">
+    <div class="conn-left">
+      <div class="conn-dot sync" id="connDot"></div>
+      <div class="conn-info">
+        <div class="conn-status" id="connStatus">Conectando</div>
+        <div class="conn-room" id="connRoom">Servidor</div>
+      </div>
+    </div>
+    <div class="user-badge" id="btnProfile">
+      <div class="user-avatar" id="headerAvatar">U</div>
+      <div class="user-name-sm" id="headerName">Usuário</div>
+    </div>
+  </div>
+
+  <div class="search-wrap">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <input type="text" id="inSearch" placeholder="Buscar música ou artista...">
+    <button class="search-clear" id="btnClearSearch"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+
+  <div class="section-label">
+    <span>Categorias</span>
+    <button class="btn-add-cat" id="btnOpenCat"><i class="fa-solid fa-plus"></i> Nova</button>
+  </div>
+  <div class="chips-scroll" id="chips"></div>
+  <div class="chip-hint">Pressione e segure uma categoria para excluí-la</div>
+
+  <div class="list-head">
+    <div class="list-title" id="listTitle">Músicas</div>
+    <div class="list-count" id="listCount">0</div>
+  </div>
+
+  <div id="songList"></div>
+  <div class="empty" id="emptyMsg">
+    <i class="fa-regular fa-folder-open"></i>
+    Nenhuma música adicionada.
+  </div>
+</div>
+
+<button class="fab" id="fab"><i class="fa-solid fa-plus"></i></button>
+
+<!-- Tab bar -->
+<div class="tab-bar hidden" id="tabBar">
+  <div class="tab-bar-inner">
+    <button class="tab-item active" data-tab="songs"><i class="fa-solid fa-music"></i><span>Músicas</span></button>
+    <button class="tab-item" data-tab="profile"><i class="fa-solid fa-user"></i><span>Perfil</span></button>
+  </div>
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  // ═══ CONFIGURAÇÃO DA API ═══
+  var API = window.location.origin + '/api';
+  var token = localStorage.getItem('setlist_token') || null;
+  var currentUser = null;
+
+  // Dados em memória (sync com servidor)
+  var cats = [];
+  var songs = [];
+  var activeCat = "all";
+  var searchTerm = "";
+  var editingId = null;
+  var isRegister = false;
+
+  // Socket.IO
+  var socket = null;
+  var wakeLock = null;
+  var seenAlerts = new Set();
+
+  var $ = function(id) { return document.getElementById(id); };
+  function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+  // ═══ TOAST ═══
+  function toast(msg, type) {
+    type = type || 'ok';
+    var t = document.createElement('div');
+    t.className = 'toast ' + type;
+    var icon = type === 'err' ? 'fa-circle-xmark' : (type === 'info' ? 'fa-circle-info' : (type === 'alert' ? 'fa-bullhorn' : 'fa-circle-check'));
+    t.innerHTML = '<i class="fa-solid ' + icon + '"></i>' + esc(msg);
+    $('toasts').appendChild(t);
+    if (type === 'alert' && navigator.vibrate) navigator.vibrate([100, 50, 100]);
+    setTimeout(function() { if (t.parentNode) t.remove(); }, 3500);
+  }
+
+  // ═══ API HELPER ═══
+  function api(method, path, body) {
+    var opts = {
+      method: method,
+      headers: { 'Content-Type': 'application/json' }
+    };
+    if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+    if (body) opts.body = JSON.stringify(body);
+    return fetch(API + path, opts).then(function(r) {
+      return r.json().then(function(data) {
+        if (!r.ok) throw new Error(data.error || 'Erro na requisição');
+        return data;
+      });
+    });
+  }
+
+  // ═══ AUTH ═══
+  function showAuthError(msg) {
+    var el = $('authError');
+    el.querySelector('span').textContent = msg;
+    el.classList.add('show');
+    setTimeout(function() { el.classList.remove('show'); }, 4000);
+  }
+
+  function updateAuthUI() {
+    if (isRegister) {
+      $('fieldNameWrap').classList.remove('hidden');
+      $('authBtnText').textContent = 'Cadastrar';
+      $('authToggle').innerHTML = 'Já tem conta? <a id="authToggleLink">Entrar</a>';
+    } else {
+      $('fieldNameWrap').classList.add('hidden');
+      $('authBtnText').textContent = 'Entrar';
+      $('authToggle').innerHTML = 'Não tem conta? <a id="authToggleLink">Cadastre-se</a>';
+    }
+    $('authToggleLink').addEventListener('click', function() {
+      isRegister = !isRegister;
+      updateAuthUI();
+    });
+  }
+  updateAuthUI();
+
+  $('btnAuthSubmit').addEventListener('click', function() {
+    var email = $('authEmail').value.trim();
+    var pass = $('authPass').value;
+    if (!email || !pass) { showAuthError('Preencha email e senha'); return; }
+
+    var btn = $('btnAuthSubmit');
+    btn.disabled = true;
+    $('authBtnText').innerHTML = '<span class="spinner"></span>';
+
+    var promise;
+    if (isRegister) {
+      var name = $('authName').value.trim();
+      if (!name) { showAuthError('Preencha o nome'); btn.disabled = false; $('authBtnText').textContent = 'Cadastrar'; return; }
+      promise = api('POST', '/auth/register', { name: name, email: email, password: pass });
+    } else {
+      promise = api('POST', '/auth/login', { email: email, password: pass });
+    }
+
+    promise.then(function(data) {
+      token = data.token;
+      currentUser = data.user;
+      localStorage.setItem('setlist_token', token);
+      $('authScreen').classList.add('hide');
+      $('tabBar').classList.remove('hidden');
+      initApp();
+    }).catch(function(err) {
+      showAuthError(err.message);
+    }).finally(function() {
+      btn.disabled = false;
+      $('authBtnText').textContent = isRegister ? 'Cadastrar' : 'Entrar';
+    });
+  });
+
+  // Enter para submit
+  ['authEmail', 'authPass', 'authName'].forEach(function(id) {
+    $(id).addEventListener('keydown', function(e) { if (e.key === 'Enter') $('btnAuthSubmit').click(); });
+  });
+
+  // ═══ LOGOUT ═══
+  $('btnLogout').addEventListener('click', function() {
+    token = null;
+    currentUser = null;
+    localStorage.removeItem('setlist_token');
+    if (socket) socket.disconnect();
+    socket = null;
+    cats = [];
+    songs = [];
+    $('authScreen').classList.remove('hide');
+    $('tabBar').classList.add('hidden');
+    $('authEmail').value = '';
+    $('authPass').value = '';
+    $('authName').value = '';
+    closeProfile();
+    toast('Sessão encerrada', 'info');
+  });
+
+  // ═══ SOCKET.IO ═══
+  function initSocket() {
+    socket = io(window.location.origin, { transports: ['websocket', 'polling'] });
+
+    socket.on('connect', function() {
+      setConnUI('Conectado', 'Servidor', 'on');
+      if (token) socket.emit('auth', token);
+    });
+
+    socket.on('auth_ok', function(data) {
+      setConnUI('Online', data.devices + ' dispositivo' + (data.devices > 1 ? 's' : ''), 'on');
+    });
+
+    socket.on('auth_fail', function() {
+      setConnUI('Erro de auth', 'Reconectando...', 'err');
+    });
+
+    socket.on('disconnect', function() {
+      setConnUI('Desconectado', 'Reconectando...', 'err');
+    });
+
+    // Sincronização em tempo real
+    socket.on('categories_changed', function(data) {
+      if (data.action === 'create') {
+        cats.push(data.category);
+      } else if (data.action === 'update') {
+        var idx = cats.findIndex(function(c) { return c.id === data.category.id; });
+        if (idx > -1) cats[idx] = data.category;
+      } else if (data.action === 'delete') {
+        cats = cats.filter(function(c) { return c.id !== data.categoryId; });
+        if (activeCat === data.categoryId) activeCat = 'all';
+      }
+      render();
+    });
+
+    socket.on('songs_changed', function(data) {
+      if (data.action === 'create') {
+        songs.push(data.song);
+      } else if (data.action === 'update') {
+        var idx = songs.findIndex(function(s) { return s.id === data.song.id; });
+        if (idx > -1) songs[idx] = data.song;
+      } else if (data.action === 'delete') {
+        songs = songs.filter(function(s) { return s.id !== data.songId; });
+      } else if (data.action === 'reorder') {
+        loadSongs(); // Recarrega do servidor
+      }
+      render();
+    });
+
+    socket.on('alert', function(data) {
+      if (!seenAlerts.has(data.alertId)) {
+        seenAlerts.add(data.alertId);
+        toast(data.msg, 'alert');
+      }
+    });
+
+    socket.on('full_sync', function(data) {
+      cats = data.categories || [];
+      songs = data.songs || [];
+      render();
+    });
+
+    socket.on('data_imported', function() {
+      loadAll();
+      toast('Dados importados em outro dispositivo', 'info');
+    });
+  }
+
+  function setConnUI(status, sub, dotClass) {
+    $('connStatus').textContent = status;
+    $('connRoom').textContent = sub || 'Servidor';
+    $('connDot').className = 'conn-dot ' + dotClass;
+  }
+
+  // ═══ LOAD DATA ═══
+  function loadCats() {
+    return api('GET', '/categories').then(function(data) { cats = data.categories; });
+  }
+  function loadSongs() {
+    return api('GET', '/songs').then(function(data) { songs = data.songs; });
+  }
+  function loadAll() {
+    return Promise.all([loadCats(), loadSongs()]).then(function() { render(); });
+  }
+
+  // ═══ INIT APP ═══
+  function initApp() {
+    if (currentUser) updateUserUI();
+    setConnUI('Conectando', 'Servidor', 'sync');
+    initSocket();
+    loadAll().then(function() {
+      toast('Bem-vindo, ' + (currentUser ? currentUser.name.split(' ')[0] : '') + '!', 'ok');
+    }).catch(function(err) {
+      toast('Erro ao carregar dados', 'err');
+    });
+  }
+
+  function updateUserUI() {
+    if (!currentUser) return;
+    var initial = currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U';
+    var color = currentUser.avatarColor || '#0a84ff';
+    $('headerAvatar').textContent = initial;
+    $('headerAvatar').style.background = color;
+    $('headerName').textContent = currentUser.name.split(' ')[0];
+    $('profileAvatar').textContent = initial;
+    $('profileAvatar').style.background = color;
+    $('profileName').textContent = currentUser.name;
+    $('profileEmail').textContent = currentUser.email;
+    $('profileNameInput').value = currentUser.name;
+  }
+
+  // ═══ WAKE LOCK ═══
+  async function toggleWakeLock() {
+    try {
+      if (wakeLock) {
+        await wakeLock.release(); wakeLock = null;
+        $('btnWake').classList.remove('active'); toast('Tela pode apagar', 'info');
+      } else {
+        wakeLock = await navigator.wakeLock.request('screen');
+        $('btnWake').classList.add('active'); toast('Tela sempre acesa', 'ok');
+        wakeLock.addEventListener('release', function() { $('btnWake').classList.remove('active'); });
+      }
+    } catch (err) {}
+  }
+  $('btnWake').addEventListener('click', toggleWakeLock);
+  document.addEventListener('visibilitychange', async function() {
+    if (wakeLock !== null && document.visibilityState === 'visible') {
+      try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+    }
+  });
+
+  // ═══ RENDERING ═══
+  function renderChips() {
+    var el = $('chips'); el.innerHTML = '';
+    var all = document.createElement('div');
+    all.className = 'chip' + (activeCat === 'all' ? ' active' : '');
+    all.innerHTML = 'Todas <span class="chip-cnt">' + songs.length + '</span>';
+    all.addEventListener('click', function() { activeCat = 'all'; renderSongs(); renderChips(); });
+    el.appendChild(all);
+
+    cats.forEach(function(c) {
+      var ch = document.createElement('div');
+      ch.className = 'chip' + (activeCat === c.id ? ' active' : '');
+      var cnt = songs.filter(function(s) { return s.category_id === c.id; }).length;
+      ch.innerHTML = esc(c.name) + ' <span class="chip-cnt">' + cnt + '</span>';
+      var timer = null;
+      ch.addEventListener('touchstart', function() { timer = setTimeout(function() { deleteCat(c.id); }, 500); }, { passive: true });
+      ch.addEventListener('touchend', function(e) { clearTimeout(timer); activeCat = c.id; renderSongs(); renderChips(); e.preventDefault(); });
+      ch.addEventListener('touchmove', function() { clearTimeout(timer); }, { passive: true });
+      ch.addEventListener('click', function() { activeCat = c.id; renderSongs(); renderChips(); });
+      ch.addEventListener('contextmenu', function(e) { e.preventDefault(); deleteCat(c.id); });
+      el.appendChild(ch);
+    });
+  }
+
+  function updateCatSelect() {
+    var sel = $('inCat'), val = sel.value;
+    sel.innerHTML = '<option value="">Selecione...</option>';
+    cats.forEach(function(c) { var o = document.createElement('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
+    if (cats.find(function(c) { return c.id === val; })) sel.value = val;
+  }
+
+  function renderSongs() {
+    var list = getFiltered(), el = $('songList'); el.innerHTML = '';
+    $('emptyMsg').classList.toggle('hidden', list.length > 0);
+    $('listCount').textContent = list.length;
+    var catObj = cats.find(function(c) { return c.id === activeCat; });
+    $('listTitle').textContent = activeCat === 'all' ? 'Músicas' : (catObj ? catObj.name : 'Músicas');
+
+    if (list.length === 0 && searchTerm) {
+      $('emptyMsg').innerHTML = '<i class="fa-solid fa-magnifying-glass"></i>Nenhum resultado para "' + esc(searchTerm) + '".';
+      $('emptyMsg').classList.remove('hidden');
+    } else if (list.length === 0) {
+      $('emptyMsg').innerHTML = '<i class="fa-regular fa-folder-open"></i>Nenhuma música aqui.<br>Toque no <strong>+</strong> para adicionar.';
+    }
+
+    list.forEach(function(s, i) {
+      var hasLyrics = !!(s.lyrics && s.lyrics.trim());
+      var card = document.createElement('div');
+      card.className = 'song-card';
+      card.style.animationDelay = (i * 0.03) + 's';
+      var lyrIco = hasLyrics ? '<i class="fa-solid fa-align-left"></i>' : '';
+      var artistH = s.artist ? '<div class="sc-artist">' + lyrIco + esc(s.artist) + '</div>' : (hasLyrics ? '<div class="sc-artist">' + lyrIco + ' Letra disponível</div>' : '');
+      card.innerHTML = '<div class="sc-body"><div class="tom-badge"><span>' + esc(s.tom) + '</span><small>tom</small></div><div class="sc-info"><div class="sc-name">' + esc(s.name) + '</div>' + artistH + '</div><div class="sc-actions"><button class="btn-ico edit"><i class="fa-solid fa-pen"></i></button><button class="btn-ico del"><i class="fa-solid fa-trash"></i></button></div></div>';
+      card.addEventListener('click', function(e) { if (e.target.closest('.btn-ico')) return; openView(s.id); });
+      card.querySelector('.edit').addEventListener('click', function(e) { e.stopPropagation(); openSong(s.id); });
+      card.querySelector('.del').addEventListener('click', function(e) { e.stopPropagation(); deleteSong(s.id); });
+      el.appendChild(card);
+    });
+  }
+
+  function getFiltered() {
+    var list = activeCat === 'all' ? songs.slice() : songs.filter(function(s) { return s.category_id === activeCat; });
+    if (searchTerm) {
+      list = list.filter(function(s) {
+        return (s.name && s.name.toLowerCase().indexOf(searchTerm) > -1) || (s.artist && s.artist.toLowerCase().indexOf(searchTerm) > -1);
+      });
+    }
+    return list.sort(function(a, b) { return (a.sort_order || 999) - (b.sort_order || 999); });
+  }
+
+  function render() { renderChips(); renderSongs(); updateCatSelect(); }
+
+  // ═══ VIEW LETRA ═══
+  function openView(id) {
+    var s = songs.find(function(x) { return x.id === id; });
+    if (!s) return;
+    var cat = cats.find(function(c) { return c.id === s.category_id; });
+    var hasLyrics = !!(s.lyrics && s.lyrics.trim());
+    $('viewTitle').textContent = s.name || 'Música';
+    var html = '<div class="view-info"><div class="view-tom"><span>' + esc(s.tom) + '</span><small>tom</small></div><div class="view-meta"><h1>' + esc(s.name) + '</h1>';
+    if (s.artist) html += '<p>' + esc(s.artist) + '</p>';
+    if (cat) html += '<div class="view-tag">' + esc(cat.name) + '</div>';
+    html += '</div></div>';
+    if (hasLyrics) html += '<div class="view-lyrics">' + esc(s.lyrics) + '</div>';
+    else html += '<div class="view-lyrics" style="opacity:0.4;">Sem letra cadastrada.</div>';
+    if (s.obs) html += '<div class="view-obs"><strong>Obs:</strong> ' + esc(s.obs) + '</div>';
+    $('viewContent').innerHTML = html;
+    $('viewContent').scrollTop = 0;
+    $('ovView').classList.add('open');
+  }
+  function closeView() { $('ovView').classList.remove('open'); }
+  $('btnCloseView').addEventListener('click', closeView);
+  var lastTap = 0;
+  $('ovView').addEventListener('touchend', function(e) { var now = Date.now(); if (now - lastTap < 300) closeView(); lastTap = now; });
+
+  // ═══ CRUD CATEGORIAS ═══
+  function deleteCat(id) {
+    if (!confirm('Excluir categoria? As músicas não serão apagadas.')) return;
+    api('DELETE', '/categories/' + id).then(function() {
+      if (activeCat === id) activeCat = 'all';
+      cats = cats.filter(function(c) { return c.id !== id; });
+      render();
+      toast('Categoria removida', 'ok');
+    }).catch(function(err) { toast(err.message, 'err'); });
+  }
+
+  function openCat() { $('ovCat').classList.add('open'); $('inCatName').value = ''; setTimeout(function() { $('inCatName').focus(); }, 300); }
+  function closeCat() { $('ovCat').classList.remove('open'); }
+  $('btnOpenCat').addEventListener('click', openCat);
+  $('btnCancelCat').addEventListener('click', closeCat);
+  $('ovCat').addEventListener('click', function(e) { if (e.target === $('ovCat')) closeCat(); });
+  $('inCatName').addEventListener('keydown', function(e) { if (e.key === 'Enter') $('btnSaveCat').click(); });
+  $('btnSaveCat').addEventListener('click', function() {
+    var n = $('inCatName').value.trim();
+    if (!n) { toast('Digite um nome', 'err'); return; }
+    $('btnSaveCat').disabled = true;
+    api('POST', '/categories', { name: n }).then(function(data) {
+      cats.push(data.category);
+      render(); closeCat(); toast('Categoria criada', 'ok');
+    }).catch(function(err) { toast(err.message, 'err'); })
+    .finally(function() { $('btnSaveCat').disabled = false; });
+  });
+
+  // ═══ CRUD MÚSICAS ═══
+  function deleteSong(id) {
+    if (!confirm('Excluir esta música?')) return;
+    api('DELETE', '/songs/' + id).then(function() {
+      songs = songs.filter(function(x) { return x.id !== id; });
+      render(); toast('Música removida', 'ok');
+    }).catch(function(err) { toast(err.message, 'err'); });
+  }
+
+  function openSong(id) {
+    if (cats.length === 0) { toast('Crie uma categoria primeiro', 'err'); openCat(); return; }
+    updateCatSelect();
+    editingId = id || null;
+    if (editingId) {
+      var s = songs.find(function(x) { return x.id === editingId; });
+      if (s) {
+        $('songSheetTitle').innerHTML = '<i class="fa-solid fa-music"></i> Editar';
+        $('inName').value = s.name || ''; $('inTom').value = s.tom || ''; $('inOrd').value = s.sort_order || 0;
+        $('inArtist').value = s.artist || ''; $('inCat').value = s.category_id || '';
+        $('inLetra').value = s.lyrics || ''; $('inObs').value = s.obs || '';
+      }
+    } else {
+      $('songSheetTitle').innerHTML = '<i class="fa-solid fa-music"></i> Nova Música';
+      $('inName').value = ''; $('inTom').value = ''; $('inOrd').value = '';
+      $('inArtist').value = ''; $('inCat').value = ''; $('inLetra').value = ''; $('inObs').value = '';
+    }
+    checkForm();
+    $('ovSong').classList.add('open');
+  }
+  function closeSong() { $('ovSong').classList.remove('open'); editingId = null; }
+  $('fab').addEventListener('click', function() { openSong(null); });
+  $('btnCancelSong').addEventListener('click', closeSong);
+  $('ovSong').addEventListener('click', function(e) { if (e.target === $('ovSong')) closeSong(); });
+  function checkForm() { $('btnSaveSong').disabled = !($('inName').value.trim() && $('inTom').value.trim()); }
+  $('inName').addEventListener('input', checkForm);
+  $('inTom').addEventListener('input', checkForm);
+
+  $('btnSaveSong').addEventListener('click', function() {
+    var name = $('inName').value.trim(), tom = $('inTom').value.trim();
+    if (!name || !tom) return;
+    var payload = {
+      name: name, tom: tom, artist: $('inArtist').value.trim(),
+      obs: $('inObs').value.trim(), lyrics: $('inLetra').value.trim(),
+      category_id: $('inCat').value || null, sort_order: parseInt($('inOrd').value) || 0
+    };
+    $('btnSaveSong').disabled = true;
+    var promise;
+    if (editingId) {
+      promise = api('PUT', '/songs/' + editingId, payload);
+    } else {
+      promise = api('POST', '/songs', payload);
+    }
+    promise.then(function(data) {
+      if (editingId) {
+        var idx = songs.findIndex(function(x) { return x.id === editingId; });
+        if (idx > -1) songs[idx] = data.song;
+      } else {
+        songs.push(data.song);
+      }
+      closeSong(); render(); toast('Música salva', 'ok');
+    }).catch(function(err) { toast(err.message, 'err'); })
+    .finally(function() { $('btnSaveSong').disabled = false; checkForm(); });
+  });
+
+  // ═══ SEARCH ═══
+  $('inSearch').addEventListener('input', function() {
+    searchTerm = $('inSearch').value.trim().toLowerCase();
+    $('btnClearSearch').classList.toggle('show', searchTerm.length > 0);
+    renderSongs();
+  });
+  $('btnClearSearch').addEventListener('click', function() {
+    $('inSearch').value = ''; searchTerm = '';
+    $('btnClearSearch').classList.remove('show'); renderSongs();
+  });
+
+  // ═══ ALERTA ═══
+  $('btnAlert').addEventListener('click', function() {
+    var msg = prompt("Enviar aviso para a banda:");
+    if (msg && msg.trim()) {
+      msg = msg.trim();
+      var alertId = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      seenAlerts.add(alertId);
+      toast(msg, 'alert');
+      if (socket) socket.emit('alert', { msg: msg, alertId: alertId });
+    }
+  });
+
+  // ═══ PDF ═══
+  $('btnPdf').addEventListener('click', function() {
+    if (!songs.length) { toast('Sem músicas', 'err'); return; }
+    var jsPDF = window.jspdf.jsPDF;
+    var doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    var pw = doc.internal.pageSize.getWidth(), mg = 15, y = 15;
+    doc.setFillColor(8, 8, 12); doc.rect(0, 0, pw, 30, 'F');
+    doc.setTextColor(10, 132, 255); doc.setFontSize(22); doc.setFont('helvetica', 'bold'); doc.text('SETLIST', mg, y);
+    doc.setTextColor(142, 142, 147); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
+    doc.text(new Date().toLocaleDateString('pt-BR'), pw - mg, y, { align: 'right' });
+    if (currentUser) doc.text(currentUser.name, pw / 2, y, { align: 'center' });
+    y = 40;
+
+    var catsToPrint = activeCat === 'all' ? cats : cats.filter(function(c) { return c.id === activeCat; });
+    function printGroup(list, title) {
+      if (y > 260) { doc.addPage(); y = 20; }
+      doc.setFillColor(10, 132, 255); doc.rect(mg, y, pw - mg * 2, 7, 'F');
+      doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+      doc.text(title.toUpperCase(), mg + 4, y + 5); y += 12;
+      list.sort(function(a, b) { return (a.sort_order || 999) - (b.sort_order || 999); }).forEach(function(s) {
+        if (y > 275) { doc.addPage(); y = 20; }
+        doc.setTextColor(245, 245, 247); doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+        doc.text(s.name, mg + 4, y + 3);
+        doc.setTextColor(255, 214, 10);
+        doc.text(s.tom, pw - mg - doc.getTextWidth(s.tom), y + 3);
+        if (s.artist) { doc.setTextColor(142, 142, 147); doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.text(s.artist, mg + 4, y + 8); y += 14; }
+        else y += 11;
+      });
+      y += 8;
+    }
+    if (!catsToPrint.length) printGroup(songs, 'Geral');
+    else catsToPrint.forEach(function(cat) { var cs = songs.filter(function(s) { return s.category_id === cat.id; }); if (cs.length) printGroup(cs, cat.name); });
+    doc.save('SetList.pdf'); toast('PDF gerado', 'ok');
+  });
+
+  // ═══ PROFILE ═══
+  function openProfile() {
+    updateUserUI();
+    // Carregar stats
+    api('GET', '/stats').then(function(data) {
+      $('statSongs').textContent = data.totalSongs;
+      $('statCats').textContent = data.totalCats;
+      $('statLyrics').textContent = data.withLyrics;
+    }).catch(function() {});
+    $('ovProfile').classList.add('open');
+  }
+  function closeProfile() { $('ovProfile').classList.remove('open'); }
+  $('btnProfile').addEventListener('click', openProfile);
+  $('btnCloseProfile').addEventListener('click', closeProfile);
+  $('ovProfile').addEventListener('click', function(e) { if (e.target === $('ovProfile')) closeProfile(); });
+
+  $('btnUpdateProfile').addEventListener('click', function() {
+    var name = $('profileNameInput').value.trim();
+    if (!name) return;
+    api('PATCH', '/auth/me', { name: name }).then(function(data) {
+      currentUser = data.user;
+      updateUserUI();
+      toast('Nome atualizado', 'ok');
+    }).catch(function(err) { toast(err.message, 'err'); });
+  });
+
+  // ═══ EXPORT / IMPORT ═══
+  $('btnExportJson').addEventListener('click', function() {
+    window.location.href = API + '/export/json?token=' + token;
+    toast('Backup baixado', 'ok');
+  });
+
+  $('btnImportJson').addEventListener('click', function() { $('fileImport').click(); });
+  $('fileImport').addEventListener('change', function(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        var data = JSON.parse(ev.target.result);
+        if (!confirm('Isso irá adicionar ' + (data.songs ? data.songs.length : 0) + ' músicas. Continuar?')) return;
+        api('POST', '/import/json', data).then(function(res) {
+          toast(res.message, 'ok');
+          loadAll();
+        }).catch(function(err) { toast(err.message, 'err'); });
+      } catch (err) { toast('Arquivo inválido', 'err'); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  // ═══ TAB BAR ═══
+  document.querySelectorAll('.tab-item').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.tab-item').forEach(function(t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      if (tab.dataset.tab === 'profile') openProfile();
+    });
+  });
+
+  // ═══ AUTO-LOGIN ═══
+  if (token) {
+    api('GET', '/auth/me').then(function(data) {
+      currentUser = data.user;
+      $('authScreen').classList.add('hide');
+      $('tabBar').classList.remove('hidden');
+      initApp();
+    }).catch(function() {
+      // Token expirado
+      token = null;
+      localStorage.removeItem('setlist_token');
+    });
+  }
+
+})();
+</script>
+</body>
+</html>
