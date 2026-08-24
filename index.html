@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>SetList Ministério</title>
+<title>SetList Ministério de Música</title>
 <meta name="theme-color" content="#08080c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,8 +11,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<!-- Biblioteca do Banco de Dados SQL (AlaSQL) -->
-<script src="https://cdn.jsdelivr.net/npm/alasql@3.3.0/dist/alasql.min.js"></script>
 <style>
 :root {
   --bg-deep: #08080c;
@@ -25,10 +23,10 @@
   --text: #f5f5f7;
   --text-dim: #c7c7cc;
   --text-muted: #8e8e93;
-  --accent: #0a84ff; 
+  --accent: #0a84ff;
   --accent-light: #409cff;
   --accent-glow: rgba(10, 132, 255, 0.35);
-  --gold: #ffd60a; 
+  --gold: #ffd60a;
   --gold-glow: rgba(255, 214, 10, 0.4);
   --danger: #ff453a;
   --success: #30d158;
@@ -101,9 +99,13 @@ select {
 .conn-left { display: flex; align-items: center; gap: 12px; }
 .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); position: relative; }
 .conn-dot.on { background: var(--success); box-shadow: 0 0 10px var(--success); }
+.conn-dot.sync { background: var(--gold); animation: pulse 1.5s infinite; }
+.conn-dot.err { background: var(--danger); }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 214, 10, 0.4); } 70% { box-shadow: 0 0 0 8px rgba(255, 214, 10, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 214, 10, 0); } }
 .conn-info { display: flex; flex-direction: column; }
 .conn-status { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .conn-room { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #fff; font-weight: 700; margin-top: 2px; }
+.conn-right { font-size: 10px; color: var(--text-muted); font-weight: 600; }
 
 .search-wrap { position: relative; margin-bottom: 24px; }
 .search-wrap i { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 14px; }
@@ -186,8 +188,12 @@ select {
 .toast.ok i { color: var(--success); }
 .toast.err i { color: var(--danger); }
 .toast.info i { color: var(--text-muted); }
+.toast.alert { background: linear-gradient(135deg, rgba(255, 214, 10, 0.2), var(--surface-solid)); border-color: var(--gold); }
+.toast.alert i { color: var(--gold); }
 @keyframes tIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
 .hidden { display: none !important; }
+
+.saving-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); margin-left: 6px; animation: pulse 1s infinite; }
 </style>
 </head>
 <body>
@@ -195,6 +201,7 @@ select {
 <div class="bg-effects"><div class="bg-orb bg-orb-1"></div><div class="bg-orb bg-orb-2"></div></div>
 <div class="toast-box" id="toasts"></div>
 
+<!-- Modal Categoria -->
 <div class="overlay" id="ovCat">
   <div class="sheet">
     <div class="handle"></div>
@@ -208,6 +215,7 @@ select {
   </div>
 </div>
 
+<!-- Modal Música -->
 <div class="overlay" id="ovSong">
   <div class="sheet">
     <div class="handle"></div>
@@ -241,6 +249,7 @@ select {
   </div>
 </div>
 
+<!-- Tela Cheia Letra -->
 <div class="view-overlay" id="ovView">
   <div class="view-header">
     <div class="view-title" id="viewTitle">Música</div>
@@ -259,6 +268,7 @@ select {
       </div>
     </div>
     <div class="header-actions">
+      <button class="h-btn" id="btnAlert"><i class="fa-solid fa-bullhorn"></i></button>
       <button class="h-btn" id="btnWake"><i class="fa-solid fa-mug-hot"></i></button>
       <button class="h-btn" id="btnPdf"><i class="fa-solid fa-file-pdf"></i></button>
     </div>
@@ -266,12 +276,13 @@ select {
 
   <div class="conn-bar">
     <div class="conn-left">
-      <div class="conn-dot" id="connDot"></div>
+      <div class="conn-dot sync" id="connDot"></div>
       <div class="conn-info">
-        <div class="conn-status" id="connStatus">Carregando</div>
-        <div class="conn-room" id="connRoom">Banco de Dados</div>
+        <div class="conn-status" id="connStatus">Conectando</div>
+        <div class="conn-room" id="connRoom">Banco de dados do ministério</div>
       </div>
     </div>
+    <div class="conn-right" id="connRight"></div>
   </div>
 
   <div class="search-wrap">
@@ -305,30 +316,37 @@ select {
 (function() {
   "use strict";
 
-  // ================== BANCO DE DADOS SQL ==================
-  // Cria as tabelas no banco de dados local (AlaSQL)
-  alasql('CREATE TABLE IF NOT EXISTS cats (id STRING, name STRING)');
-  alasql('CREATE TABLE IF NOT EXISTS songs (id STRING, name STRING, tom STRING, artist STRING, catId STRING, letra STRING, obs STRING, song_order INT)');
+  // ================== BANCO DE DADOS (window.storage, compartilhado) ==================
+  // Todos que abrem este app compartilham os mesmos dados (categorias, músicas e avisos).
+  // Não há mais dependência de um broker MQTT público: os dados ficam salvos de verdade
+  // e continuam lá mesmo se todos saírem do app.
+  var KEY_DATA = 'setlist:data';
+  var KEY_ALERT = 'setlist:alert';
+  var POLL_MS = 4000;
 
-  var data = { cats: [], songs: [] };
+  var myId = 'user_' + Math.random().toString(36).slice(2, 9);
+  var data = { cats: [], songs: [], ts: 0 };
   var activeCat = "all";
   var searchTerm = "";
   var editingId = null;
+  var pollTimer = null;
+  var seenAlerts = new Set();
   var wakeLock = null;
+  var saving = false;
 
   var $ = function(id) { return document.getElementById(id); };
 
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
-  
+
   function toast(msg, type) {
     type = type || 'ok';
     var t = document.createElement('div');
     t.className = 'toast ' + type;
-    var icon = type === 'err' ? 'fa-circle-xmark' : (type === 'info' ? 'fa-circle-info' : 'fa-circle-check');
+    var icon = type === 'err' ? 'fa-circle-xmark' : (type === 'info' ? 'fa-circle-info' : (type === 'alert' ? 'fa-bullhorn' : 'fa-circle-check'));
     t.innerHTML = '<i class="fa-solid ' + icon + '"></i>' + esc(msg);
     $('toasts').appendChild(t);
-    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+    if (type === 'alert' && navigator.vibrate) navigator.vibrate([100, 50, 100]);
     setTimeout(function() { if (t.parentNode) t.remove(); }, 3500);
   }
 
@@ -354,55 +372,111 @@ select {
     }
   });
 
-  // Carrega os dados do banco para a memória
-  function loadLocal() {
-    try {
-      var raw = localStorage.getItem('rcc_setlist_sql');
-      if (raw) {
-        var d = JSON.parse(raw);
-        if (d.cats) {
-          d.cats.forEach(function(c) {
-            alasql('INSERT INTO cats (id, name) VALUES (?, ?)', [c.id, c.name]);
-          });
-        }
-        if (d.songs) {
-          d.songs.forEach(function(s) {
-            alasql('INSERT INTO songs (id, name, tom, artist, catId, letra, obs, song_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
-              [s.id, s.name, s.tom, s.artist, s.catId, s.letra || '', s.obs || '', s.order || 0]);
-          });
-        }
-      }
-    } catch(e) { console.error("Erro ao carregar:", e); }
-  }
-
-  // Salva os dados do banco no dispositivo
-  function saveLocal() {
-    var cats = alasql('SELECT * FROM cats');
-    var songs = alasql('SELECT * FROM songs');
-    localStorage.setItem('rcc_setlist_sql', JSON.stringify({ cats: cats, songs: songs }));
-  }
-
+  // ---------- Camada de banco de dados ----------
   function setConnUI(status, sub, dotClass) {
     $('connStatus').textContent = status;
-    $('connRoom').textContent = sub || 'Banco de Dados Local';
+    $('connRoom').textContent = sub || 'Banco de dados do ministério';
     $('connDot').className = 'conn-dot ' + dotClass;
   }
 
-  function refreshData() {
-    data.cats = alasql('SELECT * FROM cats');
-    var rawSongs = alasql('SELECT * FROM songs');
-    // Converte song_order de volta para order para manter compatibilidade com o resto do código
-    data.songs = rawSongs.map(function(s) {
-      s.order = s.song_order;
-      return s;
-    });
+  async function dbLoad() {
+    try {
+      var res = await window.storage.get(KEY_DATA, true);
+      if (res && res.value) {
+        var remote = JSON.parse(res.value);
+        if (remote && Array.isArray(remote.songs) && Array.isArray(remote.cats)) return remote;
+      }
+    } catch (e) {
+      // chave ainda não existe (primeiro uso) — trata como banco vazio
+    }
+    return null;
   }
 
-  function syncData() {
-    refreshData();
-    saveLocal();
-    render();
+  async function dbSave(d) {
+    try {
+      var res = await window.storage.set(KEY_DATA, JSON.stringify(d), true);
+      return !!res;
+    } catch (e) {
+      return false;
+    }
   }
+
+  async function initDatabase() {
+    setConnUI('Conectando', 'Carregando dados salvos...', 'sync');
+    var remote = await dbLoad();
+    if (remote) {
+      data = remote;
+      render();
+    }
+    setConnUI('Sincronizado', 'Banco de dados do ministério', 'on');
+    startPolling();
+    window.addEventListener('online', function() { setConnUI('Sincronizado', 'Conexão restabelecida', 'on'); pollForUpdates(); });
+    window.addEventListener('offline', function() { setConnUI('Offline', 'Sem conexão — alterações serão salvas ao reconectar', 'err'); });
+  }
+
+  function startPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(pollForUpdates, POLL_MS);
+  }
+
+  async function pollForUpdates() {
+    if (saving) return; // evita sobrescrever uma gravação em andamento
+    try {
+      var remote = await dbLoad();
+      if (remote && remote.ts > data.ts) {
+        data = remote;
+        render();
+      }
+      setConnUI('Sincronizado', 'Banco de dados do ministério', 'on');
+      await checkAlert();
+    } catch (e) {
+      setConnUI('Erro', 'Falha ao sincronizar', 'err');
+    }
+  }
+
+  async function checkAlert() {
+    try {
+      var res = await window.storage.get(KEY_ALERT, true);
+      if (res && res.value) {
+        var a = JSON.parse(res.value);
+        if (a && a.alertId && !seenAlerts.has(a.alertId)) {
+          seenAlerts.add(a.alertId);
+          if (a.id !== myId) toast(a.msg, 'alert');
+        }
+      }
+    } catch (e) {}
+  }
+
+  async function syncData() {
+    data.ts = Date.now();
+    render(); // otimista: atualiza a tela na hora
+    saving = true;
+    setConnUI('Salvando', 'Gravando no banco de dados...', 'sync');
+    var ok = await dbSave(data);
+    saving = false;
+    if (ok) {
+      setConnUI('Sincronizado', 'Banco de dados do ministério', 'on');
+    } else {
+      setConnUI('Erro', 'Não foi possível salvar — tentando novamente', 'err');
+      toast('Falha ao salvar. Verifique sua conexão.', 'err');
+    }
+  }
+
+  // ================== ALERTAS ==================
+  $('btnAlert').addEventListener('click', async function() {
+    var msg = prompt("Enviar aviso para a banda:");
+    if (msg && msg.trim()) {
+      msg = msg.trim();
+      var alertId = uid();
+      seenAlerts.add(alertId);
+      toast(msg, 'alert');
+      try {
+        await window.storage.set(KEY_ALERT, JSON.stringify({ msg: msg, alertId: alertId, id: myId, ts: Date.now() }), true);
+      } catch (e) {
+        toast('Falha ao enviar aviso', 'err');
+      }
+    }
+  });
 
   // ================== UI RENDERING ==================
   function renderChips() {
@@ -412,21 +486,21 @@ select {
     all.innerHTML = 'Todas <span class="chip-cnt">' + data.songs.length + '</span>';
     all.addEventListener('click', function() { activeCat = 'all'; renderSongs(); renderChips(); });
     el.appendChild(all);
-    
+
     data.cats.forEach(function(c) {
       var ch = document.createElement('div');
       ch.className = 'chip' + (activeCat === c.id ? ' active' : '');
       var cnt = data.songs.filter(function(s) { return s.catId === c.id; }).length;
       ch.innerHTML = esc(c.name) + ' <span class="chip-cnt">' + cnt + '</span>';
-      
+
       var timer = null;
-      ch.addEventListener('touchstart', function() { 
-        timer = setTimeout(function() { deleteCat(c.id); }, 500); 
+      ch.addEventListener('touchstart', function() {
+        timer = setTimeout(function() { deleteCat(c.id); }, 500);
       }, { passive: true });
-      ch.addEventListener('touchend', function(e) { 
-        clearTimeout(timer); 
-        activeCat = c.id; renderSongs(); renderChips(); 
-        e.preventDefault(); 
+      ch.addEventListener('touchend', function(e) {
+        clearTimeout(timer);
+        activeCat = c.id; renderSongs(); renderChips();
+        e.preventDefault();
       });
       ch.addEventListener('touchmove', function() { clearTimeout(timer); }, { passive: true });
       ch.addEventListener('contextmenu', function(e) { e.preventDefault(); deleteCat(c.id); });
@@ -460,7 +534,7 @@ select {
       var card = document.createElement('div');
       card.className = 'song-card';
       card.style.animationDelay = (i * 0.03) + 's';
-      
+
       var lyrIco = hasLyrics ? '<i class="fa-solid fa-align-left"></i>' : '';
       var artistH = s.artist ? '<div class="sc-artist">' + lyrIco + esc(s.artist) + '</div>' : (hasLyrics ? '<div class="sc-artist">' + lyrIco + 'Letra disponível</div>' : '');
 
@@ -482,7 +556,7 @@ select {
       card.querySelector('.del').addEventListener('click', function(e) {
         e.stopPropagation();
         if (confirm('Excluir esta música?')) {
-          alasql('DELETE FROM songs WHERE id = ?', [s.id]);
+          data.songs = data.songs.filter(function(x) { return x.id !== s.id; });
           syncData(); toast('Música removida', 'ok');
         }
       });
@@ -501,7 +575,7 @@ select {
     return list.sort(function(a, b) { return (a.order || 999) - (b.order || 999); });
   }
 
-  function render() { refreshData(); renderChips(); renderSongs(); updateCatSelect(); }
+  function render() { renderChips(); renderSongs(); updateCatSelect(); }
 
   // ================== FULL SCREEN VIEW ==================
   function openView(id) {
@@ -509,7 +583,7 @@ select {
     if (!s) return;
     var cat = data.cats.find(function(c) { return c.id === s.catId; });
     var hasLyrics = !!(s.letra && s.letra.trim());
-    
+
     $('viewTitle').textContent = s.name || 'Música';
     var html = '<div class="view-info">';
     html += '<div class="view-tom"><span>' + esc(s.tom) + '</span><small>tom</small></div>';
@@ -517,12 +591,12 @@ select {
     if (s.artist) html += '<p>' + esc(s.artist) + '</p>';
     if (cat) html += '<div class="view-tag">' + esc(cat.name) + '</div>';
     html += '</div></div>';
-    
+
     if (hasLyrics) html += '<div class="view-lyrics">' + esc(s.letra) + '</div>';
     else html += '<div class="view-lyrics" style="opacity:0.4;">Sem letra cadastrada.</div>';
-    
+
     if (s.obs) html += '<div class="view-obs"><strong>Obs:</strong> ' + esc(s.obs) + '</div>';
-    
+
     $('viewContent').innerHTML = html;
     $('viewContent').scrollTop = 0;
     $('ovView').classList.add('open');
@@ -537,19 +611,14 @@ select {
     lastTap = now;
   });
 
-  // ================== CRUD SQL ==================
-  function addCat(name) {
-    var id = uid();
-    alasql('INSERT INTO cats (id, name) VALUES (?, ?)', [id, name.trim()]);
-    syncData();
-  }
-  
-  function deleteCat(id) { 
+  // ================== CRUD ==================
+  function addCat(name) { data.cats.push({ id: uid(), name: name.trim() }); syncData(); }
+  function deleteCat(id) {
     if (!confirm('Excluir categoria e suas músicas?')) return;
-    alasql('DELETE FROM cats WHERE id = ?', [id]); 
-    alasql('DELETE FROM songs WHERE catId = ?', [id]); 
-    if (activeCat === id) activeCat = 'all'; 
-    syncData(); toast('Categoria removida', 'ok'); 
+    data.cats = data.cats.filter(function(c) { return c.id !== id; });
+    data.songs = data.songs.filter(function(s) { return s.catId !== id; });
+    if (activeCat === id) activeCat = 'all';
+    syncData(); toast('Categoria removida', 'ok');
   }
 
   // ================== EVENTS ==================
@@ -600,30 +669,27 @@ select {
   $('fab').addEventListener('click', function() { openSong(null); });
   $('btnCancelSong').addEventListener('click', closeSong);
   $('ovSong').addEventListener('click', function(e) { if (e.target === $('ovSong')) closeSong(); });
-  
+
   function checkForm() { $('btnSaveSong').disabled = !($('inName').value.trim() && $('inTom').value.trim()); }
   $('inName').addEventListener('input', checkForm);
   $('inTom').addEventListener('input', checkForm);
-  
+
   $('btnSaveSong').addEventListener('click', function() {
     var name = $('inName').value.trim(), tom = $('inTom').value.trim();
     if (!name || !tom) return;
     var catId = $('inCat').value;
     if (!catId && data.cats.length > 0) catId = data.cats[0].id;
-    var artist = $('inArtist').value.trim();
-    var obs = $('inObs').value.trim();
-    var letra = $('inLetra').value.trim();
-    var order = parseInt($('inOrd').value) || 0;
-
+    var payload = {
+      name: name, tom: tom, artist: $('inArtist').value.trim(),
+      obs: $('inObs').value.trim(), letra: $('inLetra').value.trim(),
+      catId: catId || '', order: parseInt($('inOrd').value) || 0
+    };
     if (editingId) {
-      // SQL UPDATE
-      alasql('UPDATE songs SET name=?, tom=?, artist=?, catId=?, letra=?, obs=?, song_order=? WHERE id=?', 
-        [name, tom, artist, catId, letra, obs, order, editingId]);
+      var s = data.songs.find(function(x) { return x.id === editingId; });
+      if (s) Object.assign(s, payload);
     } else {
-      // SQL INSERT
-      var newId = uid();
-      alasql('INSERT INTO songs (id, name, tom, artist, catId, letra, obs, song_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
-        [newId, name, tom, artist, catId, letra, obs, order]);
+      payload.id = uid();
+      data.songs.push(payload);
     }
     closeSong();
     syncData();
@@ -636,27 +702,27 @@ select {
     var jsPDF = window.jspdf.jsPDF;
     var doc = new jsPDF({ unit: 'mm', format: 'a4' });
     var pw = doc.internal.pageSize.getWidth(), mg = 15, y = 15;
-    
+
     doc.setFillColor(8, 8, 12); doc.rect(0, 0, pw, 30, 'F');
     doc.setTextColor(10, 132, 255); doc.setFontSize(22); doc.setFont('helvetica', 'bold'); doc.text('SETLIST', mg, y);
     doc.setTextColor(142, 142, 147); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
     doc.text(new Date().toLocaleDateString('pt-BR'), pw - mg, y, { align: 'right' });
     y = 40;
-    
+
     var catsToPrint = activeCat === 'all' ? data.cats : data.cats.filter(function(c) { return c.id === activeCat; });
-    
+
     function printGroup(list, title) {
       if (y > 260) { doc.addPage(); y = 20; }
       doc.setFillColor(10, 132, 255); doc.rect(mg, y, pw-mg*2, 7, 'F');
       doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica','bold');
       doc.text(title.toUpperCase(), mg+4, y+5);
       y += 12;
-      
+
       list.sort(function(a,b) { return (a.order||999)-(b.order||999); }).forEach(function(s, i) {
         if (y > 275) { doc.addPage(); y = 20; }
         doc.setTextColor(245, 245, 247); doc.setFontSize(12); doc.setFont('helvetica','bold');
         doc.text(s.name, mg+4, y+3);
-        doc.setTextColor(255, 214, 10); 
+        doc.setTextColor(255, 214, 10);
         var tw = doc.getTextWidth(s.tom);
         doc.text(s.tom, pw-mg-tw, y+3);
         if (s.artist) {
@@ -672,15 +738,13 @@ select {
 
     if (!catsToPrint.length) printGroup(data.songs, 'Geral');
     else catsToPrint.forEach(function(cat) { var cs = data.songs.filter(function(s) { return s.catId === cat.id; }); if (cs.length) printGroup(cs, cat.name); });
-    
+
     doc.save('SetList.pdf'); toast('PDF gerado', 'ok');
   });
 
   // ================== INIT ==================
-  loadLocal();
-  refreshData();
   render();
-  setConnUI('Salvo', 'Banco de Dados Local', 'on');
+  initDatabase();
 
 })();
 </script>
