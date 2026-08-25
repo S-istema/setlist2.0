@@ -262,7 +262,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 </div>
 
 <script>
-  (function(){
+ (function(){
 "use strict";
 
 var DEFAULT_URL = 'https://ofapfbrjpeyulkfgnimk.supabase.co';
@@ -279,9 +279,12 @@ var isReg = false;
 var wakeLock = null;
 var vFontSize = 18;
 var rtCh = [];
+var loadingData = false;
 
 var $ = function(id){ return document.getElementById(id); };
 function esc(s){ var d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+function safeStr(v){ return (v && typeof v === 'string') ? v : ''; }
+function safeInt(v){ var n=parseInt(v); return isNaN(n)?0:n; }
 
 function toast(msg, tipo){
   tipo = tipo || 'ok';
@@ -299,6 +302,7 @@ function showTela(id){
 }
 function so(id, abrir){ $(id).classList.toggle('open', abrir); }
 
+// ═══ SETUP ═══
 var savedUrl = localStorage.getItem('sb_url') || DEFAULT_URL;
 var savedKey = localStorage.getItem('sb_key') || DEFAULT_KEY;
  $('sUrl').value = savedUrl;
@@ -315,9 +319,9 @@ function doConnect(url, key, callback){
   try {
     var client = window.supabase.createClient(url, key);
     client.from('categories').select('id').limit(1).then(function(res){
-      if(res.error){
-        if(res.error.message.indexOf('does not exist') > -1){
-          callback(false, 'Conectou, mas as tabelas não existem. Rode o SQL no Supabase primeiro.');
+      if(res && res.error){
+        if((res.error.message || '').indexOf('does not exist') > -1){
+          callback(false, 'Conectou, mas as tabelas não existem. Rode o SQL no Supabase.');
         } else {
           callback(false, 'Erro: ' + res.error.message);
         }
@@ -325,10 +329,10 @@ function doConnect(url, key, callback){
       }
       callback(true, null, client);
     }).catch(function(err){
-      callback(false, 'Falha: ' + err.message);
+      callback(false, 'Falha: ' + (err.message || 'desconhecido'));
     });
   } catch(err){
-    callback(false, 'Erro: ' + err.message);
+    callback(false, 'Erro: ' + (err.message || 'desconhecido'));
   }
 }
 
@@ -353,10 +357,13 @@ function doConnect(url, key, callback){
   });
 });
 
+// ═══ AUTH ═══
 function flipAuth(){
   $('fName').classList.toggle('hid', !isReg);
   $('btnAuthTxt').textContent = isReg ? 'Criar Conta' : 'Entrar';
-  $('aFlip').innerHTML = isReg ? 'Já tem conta? <a id="aFlipLnk">Fazer login</a>' : 'Não tem conta? <a id="aFlipLnk">Cadastre-se</a>';
+  $('aFlip').innerHTML = isReg
+    ? 'Já tem conta? <a id="aFlipLnk">Fazer login</a>'
+    : 'Não tem conta? <a id="aFlipLnk">Cadastre-se</a>';
   $('aFlipLnk').addEventListener('click', function(){ isReg = !isReg; flipAuth(); });
 }
 flipAuth();
@@ -369,29 +376,50 @@ function authErr(msg){
 
  $('btnAuth').addEventListener('click', async function(){
   if(!sb){ authErr('Banco não conectado. Recarregue a página.'); return; }
-  var email = $('aEmail').value.trim(), pass = $('aPass').value;
+  var email = $('aEmail').value.trim();
+  var pass = $('aPass').value;
   if(!email || !pass){ authErr('Preencha email e senha'); return; }
   if(pass.length < 6){ authErr('Senha: mínimo 6 caracteres'); return; }
+
   var btn = $('btnAuth');
   btn.disabled = true;
   $('btnAuthTxt').innerHTML = '<span class="spinning"></span>';
+
   try {
     var res;
     if(isReg){
       var name = $('aName').value.trim();
-      if(!name){ authErr('Preencha seu nome'); btn.disabled=false; $('btnAuthTxt').textContent='Criar Conta'; return; }
-      res = await sb.auth.signUp({ email:email, password:pass, options:{ data:{ name:name } } });
+      if(!name){
+        authErr('Preencha seu nome');
+        btn.disabled = false;
+        $('btnAuthTxt').textContent = 'Criar Conta';
+        return;
+      }
+      res = await sb.auth.signUp({ email: email, password: pass, options: { data: { name: name } } });
     } else {
-      res = await sb.auth.signInWithPassword({ email:email, password:pass });
+      res = await sb.auth.signInWithPassword({ email: email, password: pass });
     }
-    if(!res || !res.data || !res.data.user){ authErr('Resposta inesperada do servidor'); return; }
-    var u = res.data.user;
-    user = { id:u.id, email:u.email || '', name:(u.user_metadata && u.user_metadata.name) || u.email.split('@')[0] };
+
+    var u = null;
+    if(res && res.data && res.data.user) u = res.data.user;
+    if(!u || !u.id){
+      authErr('Resposta inesperada do servidor');
+      btn.disabled = false;
+      $('btnAuthTxt').textContent = isReg ? 'Criar Conta' : 'Entrar';
+      return;
+    }
+
+    var userName = '';
+    if(u.user_metadata && u.user_metadata.name) userName = u.user_metadata.name;
+    else if(u.email) userName = u.email.split('@')[0];
+
+    user = { id: u.id, email: safeStr(u.email), name: userName };
     showTela('telaApp');
     await boot();
     toast('Bem-vindo, ' + user.name.split(' ')[0] + '!', 'ok');
+
   } catch(e){
-    var m = (e.message || '').replace(/\[.*?\]\s*/g, '');
+    var m = safeStr(e.message).replace(/\[.*?\]\s*/g, '');
     if(m.indexOf('Invalid login') > -1) m = 'Email ou senha incorretos';
     if(m.indexOf('already registered') > -1) m = 'Email já cadastrado. Faça login.';
     authErr(m);
@@ -405,261 +433,523 @@ function authErr(msg){
   $(id).addEventListener('keydown', function(e){ if(e.key==='Enter') $('btnAuth').click(); });
 });
 
-function setStatus(lbl, det, dot){ $('sLbl').textContent=lbl; $('sDet').textContent=det||''; $('sDot').className='sdot '+(dot||''); }
+// ═══ STATUS / UI ═══
+function setStatus(lbl, det, dot){
+  $('sLbl').textContent = lbl;
+  $('sDet').textContent = det || '';
+  $('sDot').className = 'sdot ' + (dot || '');
+}
 
 function setUserUI(){
   if(!user) return;
-  var ini = (user.name || 'U').charAt(0).toUpperCase();
-  $('uAv').textContent = ini; $('uNm').textContent = (user.name || '').split(' ')[0];
-  $('pAv').textContent = ini; $('pNm').textContent = user.name;
-  $('pEm').textContent = user.email || ''; $('pNI').value = user.name || '';
+  var ini = safeStr(user.name).charAt(0).toUpperCase() || 'U';
+  $('uAv').textContent = ini;
+  $('uNm').textContent = safeStr(user.name).split(' ')[0];
+  $('pAv').textContent = ini;
+  $('pNm').textContent = safeStr(user.name);
+  $('pEm').textContent = safeStr(user.email);
+  $('pNI').value = safeStr(user.name);
 }
 
 function updateStats(){
   $('st1').textContent = songs.length;
   $('st2').textContent = cats.length;
-  $('st3').textContent = songs.filter(function(s){ return s.lyrics && s.lyrics.trim(); }).length;
+  $('st3').textContent = songs.filter(function(s){ return safeStr(s.lyrics).length > 0; }).length;
 }
 
+// ═══ LOAD DO BANCO ═══
 async function loadCats(){
-  if(!user || !user.id) return;
+  if(!sb || !user || !user.id) return;
   var r = await sb.from('categories').select('*').eq('user_id', user.id).order('sort_order',{ascending:true}).order('name',{ascending:true});
-  if(r.error) throw r.error;
-  cats = (r.data && Array.isArray(r.data)) ? r.data : [];
-}
-
-async function loadSongs(){
-  if(!user || !user.id) return;
-  var r = await sb.from('songs').select('*, categories(name)').eq('user_id', user.id).order('sort_order',{ascending:true}).order('name',{ascending:true});
-  if(r.error) throw r.error;
-  var raw = (r.data && Array.isArray(r.data)) ? r.data : [];
-  songs = raw.map(function(s){
+  if(r && r.error) throw new Error(r.error.message);
+  var data = (r && r.data && Array.isArray(r.data)) ? r.data : [];
+  cats = data.map(function(c){
     return {
-      id: s.id, name: s.name || '', tom: s.tom || 'C', artist: s.artist || '',
-      category_id: s.category_id, sort_order: s.sort_order || 0,
-      lyrics: s.lyrics || '', obs: s.obs || '',
-      category_name: (s.categories && s.categories.name) || null
+      id: c.id || '',
+      name: safeStr(c.name),
+      sort_order: safeInt(c.sort_order)
     };
   });
 }
 
-async function loadAll(){ await Promise.all([loadCats(), loadSongs()]); updateStats(); render(); }
-
-function wireRealtime(){
-  rtCh.forEach(function(c){ c.unsubscribe(); }); rtCh = [];
-  if(!user || !user.id) return;
-  var p = 'u_' + user.id;
-
-  var c1 = sb.channel(p+'_c').on('postgres_changes',{event:'*',schema:'public',table:'categories',filter:'user_id=eq.'+user.id},function(ev){
-    try {
-      if(ev.eventType==='INSERT' && ev.new && ev.new.id){
-        cats.push(ev.new);
-        cats.sort(function(a,b){return(a.sort_order||0)-(b.sort_order||0);});
-      }
-      else if(ev.eventType==='UPDATE' && ev.new && ev.new.id){
-        var i=cats.findIndex(function(c){return c.id===ev.new.id;});
-        if(i>-1) cats[i]=ev.new;
-      }
-      else if(ev.eventType==='DELETE' && ev.old && ev.old.id){
-        cats=cats.filter(function(c){return c.id!==ev.old.id;});
-        if(activeCat===ev.old.id) activeCat='all';
-      }
-      render();
-    } catch(e){}
-  }).subscribe(); rtCh.push(c1);
-
-  var c2 = sb.channel(p+'_s').on('postgres_changes',{event:'*',schema:'public',table:'songs',filter:'user_id=eq.'+user.id},function(ev){
-    try {
-      var cn=null;
-      if(ev.new && ev.new.category_id){
-        var c=cats.find(function(x){return x.id===ev.new.category_id;});
-        if(c) cn=c.name;
-      }
-      if(ev.eventType==='INSERT' && ev.new && ev.new.id){
-        songs.push({
-          id:ev.new.id, name:ev.new.name||'', tom:ev.new.tom||'C', artist:ev.new.artist||'',
-          category_id:ev.new.category_id, sort_order:ev.new.sort_order||0,
-          lyrics:ev.new.lyrics||'', obs:ev.new.obs||'', category_name:cn
-        });
-      }
-      else if(ev.eventType==='UPDATE' && ev.new && ev.new.id){
-        var i=songs.findIndex(function(x){return x.id===ev.new.id;});
-        if(i>-1){
-          songs[i]={
-            id:ev.new.id, name:ev.new.name||'', tom:ev.new.tom||'C', artist:ev.new.artist||'',
-            category_id:ev.new.category_id, sort_order:ev.new.sort_order||0,
-            lyrics:ev.new.lyrics||'', obs:ev.new.obs||'', category_name:cn
-          };
-        }
-      }
-      else if(ev.eventType==='DELETE' && ev.old && ev.old.id){
-        songs=songs.filter(function(x){return x.id!==ev.old.id;});
-      }
-      updateStats(); render();
-    } catch(e){}
-  }).subscribe(); rtCh.push(c2);
+async function loadSongs(){
+  if(!sb || !user || !user.id) return;
+  var r = await sb.from('songs').select('*, categories(name)').eq('user_id', user.id).order('sort_order',{ascending:true}).order('name',{ascending:true});
+  if(r && r.error) throw new Error(r.error.message);
+  var data = (r && r.data && Array.isArray(r.data)) ? r.data : [];
+  songs = data.map(function(s){
+    var catName = null;
+    if(s.categories && typeof s.categories === 'object' && s.categories.name) catName = s.categories.name;
+    return {
+      id: s.id || '',
+      name: safeStr(s.name),
+      tom: safeStr(s.tom) || 'C',
+      artist: safeStr(s.artist),
+      category_id: s.category_id || null,
+      sort_order: safeInt(s.sort_order),
+      lyrics: safeStr(s.lyrics),
+      obs: safeStr(s.obs),
+      category_name: catName
+    };
+  });
 }
 
+async function loadAll(){
+  await Promise.all([loadCats(), loadSongs()]);
+  updateStats();
+  render();
+}
+
+// ═══ REALTIME — simples: qualquer mudança recarrega tudo ═══
+function wireRealtime(){
+  rtCh.forEach(function(c){ try{ c.unsubscribe(); }catch(e){} });
+  rtCh = [];
+  if(!sb || !user || !user.id) return;
+  var p = 'reload_' + user.id;
+
+  var c1 = sb.channel(p).on('postgres_changes',{
+    event: '*', schema: 'public', table: 'categories',
+    filter: 'user_id=eq.' + user.id
+  }, function(){
+    if(!loadingData) silentReload();
+  }).subscribe();
+  rtCh.push(c1);
+
+  var c2 = sb.channel(p+'_s').on('postgres_changes',{
+    event: '*', schema: 'public', table: 'songs',
+    filter: 'user_id=eq.' + user.id
+  }, function(){
+    if(!loadingData) silentReload();
+  }).subscribe();
+  rtCh.push(c2);
+}
+
+// Recarrega silenciosamente sem mostrar erro
+async function silentReload(){
+  loadingData = true;
+  try {
+    await loadAll();
+  } catch(e){}
+  loadingData = false;
+}
+
+// ═══ BOOT ═══
+async function boot(){
+  if(!user || !user.id){ setStatus('Erro','Usuário inválido','off'); return; }
+  if(!sb){ setStatus('Erro','Sem conexão','off'); return; }
+  setUserUI();
+  setStatus('Conectando','Supabase','wait');
+  try {
+    await loadAll();
+    wireRealtime();
+    setStatus('Online','Conectado','live');
+  } catch(e){
+    setStatus('Erro','Tente novamente','off');
+    toast('Erro ao carregar: ' + safeStr(e.message), 'err');
+  }
+}
+
+// ═══ RENDER ═══
 function renderChips(){
-  var el=$('chips'); el.innerHTML='';
-  var a=document.createElement('div'); a.className='chip'+(activeCat==='all'?' sel':''); a.innerHTML='Todas <span class="chip-n">'+songs.length+'</span>';
-  a.onclick=function(){activeCat='all';renderSongs();renderChips();}; el.appendChild(a);
-  cats.forEach(function(c){
-    var ch=document.createElement('div'); ch.className='chip'+(activeCat===c.id?' sel':'');
-    var cnt=songs.filter(function(s){return s.category_id===c.id;}).length;
-    ch.innerHTML=esc(c.name)+' <span class="chip-n">'+cnt+'</span>';
-    var ht=null;
-    ch.addEventListener('touchstart',function(){ht=setTimeout(function(){deleteCat(c.id);},600);},{passive:true});
-    ch.addEventListener('touchend',function(e){clearTimeout(ht);activeCat=c.id;renderSongs();renderChips();e.preventDefault();});
-    ch.addEventListener('touchmove',function(){clearTimeout(ht);},{passive:true});
-    ch.addEventListener('click',function(){activeCat=c.id;renderSongs();renderChips();});
-    ch.addEventListener('contextmenu',function(e){e.preventDefault();deleteCat(c.id);});
+  var el = $('chips');
+  if(!el) return;
+  el.innerHTML = '';
+  var a = document.createElement('div');
+  a.className = 'chip' + (activeCat==='all' ? ' sel' : '');
+  a.innerHTML = 'Todas <span class="chip-n">' + songs.length + '</span>';
+  a.onclick = function(){ activeCat='all'; renderSongs(); renderChips(); };
+  el.appendChild(a);
+
+  for(var i = 0; i < cats.length; i++){
+    var c = cats[i];
+    if(!c || !c.id) continue;
+    var ch = document.createElement('div');
+    ch.className = 'chip' + (activeCat===c.id ? ' sel' : '');
+    var cnt = songs.filter(function(s){ return s.category_id === c.id; }).length;
+    ch.innerHTML = esc(c.name) + ' <span class="chip-n">' + cnt + '</span>';
+    (function(catId){
+      var ht = null;
+      ch.addEventListener('touchstart', function(){ ht=setTimeout(function(){ deleteCat(catId); }, 600); }, {passive:true});
+      ch.addEventListener('touchend', function(e){ clearTimeout(ht); activeCat=catId; renderSongs(); renderChips(); e.preventDefault(); });
+      ch.addEventListener('touchmove', function(){ clearTimeout(ht); }, {passive:true});
+      ch.addEventListener('click', function(){ activeCat=catId; renderSongs(); renderChips(); });
+      ch.addEventListener('contextmenu', function(e){ e.preventDefault(); deleteCat(catId); });
+    })(c.id);
     el.appendChild(ch);
-  });
+  }
 }
 
 function fillCatSel(){
-  var sel=$('iSC'),v=sel.value; sel.innerHTML='<option value="">Selecione...</option>';
-  cats.forEach(function(c){var o=document.createElement('option');o.value=c.id;o.textContent=c.name;sel.appendChild(o);});
-  if(cats.find(function(c){return c.id===v;})) sel.value=v;
+  var sel = $('iSC');
+  if(!sel) return;
+  var v = sel.value;
+  sel.innerHTML = '<option value="">Selecione...</option>';
+  for(var i = 0; i < cats.length; i++){
+    var c = cats[i];
+    if(!c || !c.id) continue;
+    var o = document.createElement('option');
+    o.value = c.id;
+    o.textContent = c.name;
+    sel.appendChild(o);
+  }
+  for(var j = 0; j < cats.length; j++){
+    if(cats[j] && cats[j].id === v){ sel.value = v; break; }
+  }
 }
 
 function renderSongs(){
-  var list=filtered(),el=$('sList'); el.innerHTML='';
-  $('emSt').classList.toggle('hid',list.length>0); $('lB').textContent=list.length;
-  var co=cats.find(function(c){return c.id===activeCat;});
-  $('lH').textContent=activeCat==='all'?'Músicas':(co?co.name:'Músicas');
-  if(!list.length&&search){$('emSt').innerHTML='<i class="fa-solid fa-magnifying-glass"></i><p>Nenhum resultado para "<strong>'+esc(search)+'</strong>"</p>';$('emSt').classList.remove('hid');}
-  else if(!list.length){$('emSt').innerHTML='<i class="fa-regular fa-folder-open"></i><p>Nenhuma música aqui.<br>Toque no <strong>+</strong> para começar.</p>';}
-  list.forEach(function(s,i){
-    var hasL=!!(s.lyrics&&s.lyrics.trim());
-    var card=document.createElement('div'); card.className='card'; card.style.animationDelay=(i*0.025)+'s';
-    var sub='';
-    if(s.artist) sub='<div class="csub">'+(hasL?'<i class="fa-solid fa-align-left"></i>':'')+esc(s.artist)+'</div>';
-    else if(hasL) sub='<div class="csub"><i class="fa-solid fa-align-left"></i> Letra</div>';
-    card.innerHTML='<div class="card-in"><div class="tom"><b>'+esc(s.tom)+'</b><small>tom</small></div><div class="cmeta"><div class="cname">'+esc(s.name)+'</div>'+sub+'</div><div class="ctools"><button class="tb ed"><i class="fa-solid fa-pen-to-square"></i></button><button class="tb dl"><i class="fa-regular fa-trash-can"></i></button></div></div>';
-    card.addEventListener('click',function(e){if(!e.target.closest('.tb'))openViewer(s.id);});
-    card.querySelector('.ed').addEventListener('click',function(e){e.stopPropagation();openSongForm(s.id);});
-    card.querySelector('.dl').addEventListener('click',function(e){e.stopPropagation();deleteSong(s.id);});
+  var list = filtered();
+  var el = $('sList');
+  if(!el) return;
+  el.innerHTML = '';
+  $('emSt').classList.toggle('hid', list.length > 0);
+  $('lB').textContent = list.length;
+
+  var co = null;
+  for(var k = 0; k < cats.length; k++){
+    if(cats[k] && cats[k].id === activeCat){ co = cats[k]; break; }
+  }
+  $('lH').textContent = activeCat==='all' ? 'Músicas' : (co ? co.name : 'Músicas');
+
+  if(!list.length && search){
+    $('emSt').innerHTML = '<i class="fa-solid fa-magnifying-glass"></i><p>Nenhum resultado para "<strong>'+esc(search)+'</strong>"</p>';
+    $('emSt').classList.remove('hid');
+  } else if(!list.length){
+    $('emSt').innerHTML = '<i class="fa-regular fa-folder-open"></i><p>Nenhuma música aqui.<br>Toque no <strong>+</strong> para começar.</p>';
+  }
+
+  for(var i = 0; i < list.length; i++){
+    var s = list[i];
+    if(!s || !s.id) continue;
+    var hasL = safeStr(s.lyrics).length > 0;
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.style.animationDelay = (i * 0.025) + 's';
+
+    var sub = '';
+    if(s.artist) sub = '<div class="csub">' + (hasL ? '<i class="fa-solid fa-align-left"></i>' : '') + esc(s.artist) + '</div>';
+    else if(hasL) sub = '<div class="csub"><i class="fa-solid fa-align-left"></i> Letra</div>';
+
+    card.innerHTML = '<div class="card-in"><div class="tom"><b>'+esc(s.tom)+'</b><small>tom</small></div><div class="cmeta"><div class="cname">'+esc(s.name)+'</div>'+sub+'</div><div class="ctools"><button class="tb ed"><i class="fa-solid fa-pen-to-square"></i></button><button class="tb dl"><i class="fa-regular fa-trash-can"></i></button></div></div>';
+
+    (function(songId){
+      card.addEventListener('click', function(e){ if(!e.target.closest('.tb')) openViewer(songId); });
+      card.querySelector('.ed').addEventListener('click', function(e){ e.stopPropagation(); openSongForm(songId); });
+      card.querySelector('.dl').addEventListener('click', function(e){ e.stopPropagation(); deleteSong(songId); });
+    })(s.id);
+
     el.appendChild(card);
-  });
+  }
 }
 
 function filtered(){
-  var list=activeCat==='all'?songs.slice():songs.filter(function(s){return s.category_id===activeCat;});
-  if(search) list=list.filter(function(s){return(s.name&&s.name.toLowerCase().indexOf(search)>-1)||(s.artist&&s.artist.toLowerCase().indexOf(search)>-1);});
+  var list = activeCat==='all' ? songs.slice() : songs.filter(function(s){ return s.category_id === activeCat; });
+  if(search){
+    list = list.filter(function(s){
+      return (s.name && s.name.toLowerCase().indexOf(search) > -1) || (s.artist && s.artist.toLowerCase().indexOf(search) > -1);
+    });
+  }
   return list;
 }
 
-function render(){renderChips();renderSongs();fillCatSel();}
+function render(){ renderChips(); renderSongs(); fillCatSel(); }
 
+// ═══ VIEWER ═══
 function openViewer(id){
-  var s=songs.find(function(x){return x.id===id;}); if(!s) return;
-  var hasL=!!(s.lyrics&&s.lyrics.trim());
-  $('vTitle').textContent=s.name;
-  var h='<div class="vw-hero"><div class="vw-tom"><b>'+esc(s.tom)+'</b><small>tom</small></div><div class="vw-h1">'+esc(s.name)+'</div>';
-  if(s.artist) h+='<div class="vw-art">'+esc(s.artist)+'</div>';
-  if(s.category_name) h+='<div class="vw-cat">'+esc(s.category_name)+'</div>';
-  h+='</div>';
-  h+=hasL?'<div class="vw-lyr" id="vLyr" style="font-size:'+vFontSize+'px">'+esc(s.lyrics)+'</div>':'<div class="vw-lyr no" id="vLyr">Sem letra cadastrada</div>';
-  if(s.obs) h+='<div class="vw-obs"><strong>Obs:</strong> '+esc(s.obs)+'</div>';
-  $('vBody').innerHTML=h; $('vBody').scrollTop=0; $('viewer').classList.add('open'); $('vFbar').classList.remove('show');
+  var s = null;
+  for(var i = 0; i < songs.length; i++){ if(songs[i] && songs[i].id === id){ s = songs[i]; break; } }
+  if(!s) return;
+  var hasL = safeStr(s.lyrics).length > 0;
+  $('vTitle').textContent = s.name;
+  var h = '<div class="vw-hero"><div class="vw-tom"><b>'+esc(s.tom)+'</b><small>tom</small></div><div class="vw-h1">'+esc(s.name)+'</div>';
+  if(s.artist) h += '<div class="vw-art">'+esc(s.artist)+'</div>';
+  if(s.category_name) h += '<div class="vw-cat">'+esc(s.category_name)+'</div>';
+  h += '</div>';
+  h += hasL
+    ? '<div class="vw-lyr" id="vLyr" style="font-size:'+vFontSize+'px">'+esc(s.lyrics)+'</div>'
+    : '<div class="vw-lyr no" id="vLyr">Sem letra cadastrada</div>';
+  if(s.obs) h += '<div class="vw-obs"><strong>Obs:</strong> '+esc(s.obs)+'</div>';
+  $('vBody').innerHTML = h;
+  $('vBody').scrollTop = 0;
+  $('viewer').classList.add('open');
+  $('vFbar').classList.remove('show');
 }
- $('vClose').addEventListener('click',function(){$('viewer').classList.remove('open');$('vFbar').classList.remove('show');});
-var lt=0;
- $('vBody').addEventListener('touchend',function(){var n=Date.now();if(n-lt<300)$('viewer').classList.remove('open');lt=n;});
- $('vFont').addEventListener('click',function(){$('vFbar').classList.toggle('show');});
- $('fUp').addEventListener('click',function(){if(vFontSize<40){vFontSize+=2;var e=$('vLyr');if(e)e.style.fontSize=vFontSize+'px';$('fSz').textContent=vFontSize+'px';}});
- $('fDn').addEventListener('click',function(){if(vFontSize>12){vFontSize-=2;var e=$('vLyr');if(e)e.style.fontSize=vFontSize+'px';$('fSz').textContent=vFontSize+'px';}});
 
-async function deleteCat(id){
-  if(!confirm('Excluir categoria?\nAs músicas não serão apagadas.')) return;
-  await sb.from('songs').update({category_id:null}).eq('category_id',id).eq('user_id',user.id);
-  var r=await sb.from('categories').delete().eq('id',id).eq('user_id',user.id);
-  if(r.error){toast(r.error.message,'err');return;}
-  if(activeCat===id) activeCat='all';
-  cats=cats.filter(function(c){return c.id!==id;});
-  songs.forEach(function(s){if(s.category_id===id){s.category_id=null;s.category_name=null;}});
-  render();toast('Categoria removida','ok');
-}
- $('btnAddCat').addEventListener('click',function(){$('iCatN').value='';so('soCat',true);setTimeout(function(){$('iCatN').focus();},350);});
- $('btnXCat').addEventListener('click',function(){so('soCat',false);});
- $('soCat').addEventListener('click',function(e){if(e.target===$('soCat'))so('soCat',false);});
- $('iCatN').addEventListener('keydown',function(e){if(e.key==='Enter')$('btnSaveCat').click();});
- $('btnSaveCat').addEventListener('click',async function(){
-  var n=$('iCatN').value.trim();if(!n){toast('Digite um nome','err');return;}
-  $('btnSaveCat').disabled=true;
-  var maxO=cats.length?Math.max.apply(null,cats.map(function(c){return c.sort_order||0;}))+1:0;
-  var r=await sb.from('categories').insert({user_id:user.id,name:n,sort_order:maxO}).select().single();
-  if(r.error) toast(r.error.message,'err');
-  else{cats.push(r.data);cats.sort(function(a,b){return(a.sort_order||0)-(b.sort_order||0);});render();so('soCat',false);toast('Categoria criada','ok');}
-  $('btnSaveCat').disabled=false;
+ $('vClose').addEventListener('click', function(){ $('viewer').classList.remove('open'); $('vFbar').classList.remove('show'); });
+var lt = 0;
+ $('vBody').addEventListener('touchend', function(){ var n=Date.now(); if(n-lt<300) $('viewer').classList.remove('open'); lt=n; });
+ $('vFont').addEventListener('click', function(){ $('vFbar').classList.toggle('show'); });
+ $('fUp').addEventListener('click', function(){
+  if(vFontSize < 40){ vFontSize += 2; var e=$('vLyr'); if(e) e.style.fontSize=vFontSize+'px'; $('fSz').textContent=vFontSize+'px'; }
+});
+ $('fDn').addEventListener('click', function(){
+  if(vFontSize > 12){ vFontSize -= 2; var e=$('vLyr'); if(e) e.style.fontSize=vFontSize+'px'; $('fSz').textContent=vFontSize+'px'; }
 });
 
+// ═══ CRUD: CATEGORIAS ═══
+async function deleteCat(id){
+  if(!confirm('Excluir categoria?\nAs músicas não serão apagadas.')) return;
+  try {
+    await sb.from('songs').update({category_id:null}).eq('category_id', id).eq('user_id', user.id);
+    var r = await sb.from('categories').delete().eq('id', id).eq('user_id', user.id);
+    if(r && r.error){ toast(r.error.message, 'err'); return; }
+    if(activeCat === id) activeCat = 'all';
+    cats = cats.filter(function(c){ return c.id !== id; });
+    for(var i = 0; i < songs.length; i++){
+      if(songs[i] && songs[i].category_id === id){ songs[i].category_id = null; songs[i].category_name = null; }
+    }
+    render();
+    toast('Categoria removida', 'ok');
+  } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
+}
+
+ $('btnAddCat').addEventListener('click', function(){ $('iCatN').value=''; so('soCat',true); setTimeout(function(){$('iCatN').focus();}, 350); });
+ $('btnXCat').addEventListener('click', function(){ so('soCat', false); });
+ $('soCat').addEventListener('click', function(e){ if(e.target===$('soCat')) so('soCat', false); });
+ $('iCatN').addEventListener('keydown', function(e){ if(e.key==='Enter') $('btnSaveCat').click(); });
+
+ $('btnSaveCat').addEventListener('click', async function(){
+  var n = $('iCatN').value.trim();
+  if(!n){ toast('Digite um nome', 'err'); return; }
+  $('btnSaveCat').disabled = true;
+  try {
+    var maxO = 0;
+    for(var i = 0; i < cats.length; i++){ if(cats[i] && cats[i].sort_order > maxO) maxO = cats[i].sort_order; }
+    var r = await sb.from('categories').insert({user_id:user.id, name:n, sort_order:maxO+1}).select().single();
+    if(r && r.error){ toast(r.error.message, 'err'); }
+    else if(r && r.data){ cats.push({id:r.data.id, name:safeStr(r.data.name), sort_order:safeInt(r.data.sort_order)}); cats.sort(function(a,b){return(a.sort_order||0)-(b.sort_order||0);}); render(); so('soCat',false); toast('Categoria criada', 'ok'); }
+  } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
+  $('btnSaveCat').disabled = false;
+});
+
+// ═══ CRUD: MÚSICAS ═══
 async function deleteSong(id){
   if(!confirm('Excluir esta música?')) return;
-  var r=await sb.from('songs').delete().eq('id',id).eq('user_id',user.id);
-  if(r.error){toast(r.error.message,'err');return;}
-  songs=songs.filter(function(x){return x.id!==id;});updateStats();render();toast('Música removida','ok');
+  try {
+    var r = await sb.from('songs').delete().eq('id', id).eq('user_id', user.id);
+    if(r && r.error){ toast(r.error.message, 'err'); return; }
+    songs = songs.filter(function(x){ return x.id !== id; });
+    updateStats(); render(); toast('Música removida', 'ok');
+  } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
 }
 
 function openSongForm(id){
-  if(!cats.length){toast('Crie uma categoria primeiro','err');$('btnAddCat').click();return;}
-  fillCatSel(); editingId=id||null;
+  if(!cats.length){ toast('Crie uma categoria primeiro', 'err'); $('btnAddCat').click(); return; }
+  fillCatSel();
+  editingId = id || null;
   if(editingId){
-    var s=songs.find(function(x){return x.id===editingId;});
-    if(s){$('songShT').innerHTML='<i class="fa-solid fa-pen-to-square"></i> Editar Música';$('iSN').value=s.name||'';$('iST').value=s.tom||'';$('iSO').value=s.sort_order||0;$('iSA').value=s.artist||'';$('iSC').value=s.category_id||'';$('iSL').value=s.lyrics||'';$('iSObs').value=s.obs||'';}
-  } else {$('songShT').innerHTML='<i class="fa-solid fa-music"></i> Nova Música';$('iSN').value='';$('iST').value='';$('iSO').value='';$('iSA').value='';$('iSC').value='';$('iSL').value='';$('iSObs').value='';}
-  checkSongForm();so('soSong',true);
+    var s = null;
+    for(var i = 0; i < songs.length; i++){ if(songs[i] && songs[i].id === editingId){ s = songs[i]; break; } }
+    if(s){
+      $('songShT').innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Editar Música';
+      $('iSN').value = s.name || '';
+      $('iST').value = s.tom || '';
+      $('iSO').value = s.sort_order || 0;
+      $('iSA').value = s.artist || '';
+      $('iSC').value = s.category_id || '';
+      $('iSL').value = s.lyrics || '';
+      $('iSObs').value = s.obs || '';
+    }
+  } else {
+    $('songShT').innerHTML = '<i class="fa-solid fa-music"></i> Nova Música';
+    $('iSN').value = ''; $('iST').value = ''; $('iSO').value = '';
+    $('iSA').value = ''; $('iSC').value = ''; $('iSL').value = ''; $('iSObs').value = '';
+  }
+  checkSongForm();
+  so('soSong', true);
 }
-function checkSongForm(){$('btnSaveSong').disabled=!($('iSN').value.trim()&&$('iST').value.trim());}
- $('iSN').addEventListener('input',checkSongForm);$('iST').addEventListener('input',checkSongForm);
- $('fab').addEventListener('click',function(){openSongForm(null);});
- $('btnXSong').addEventListener('click',function(){so('soSong',false);});
- $('soSong').addEventListener('click',function(e){if(e.target===$('soSong'))so('soSong',false);});
- $('btnSaveSong').addEventListener('click',async function(){
-  var name=$('iSN').value.trim(),tom=$('iST').value.trim();if(!name||!tom) return;
-  $('btnSaveSong').disabled=true;
-  var payload={user_id:user.id,name:name,tom:tom,artist:$('iSA').value.trim(),category_id:$('iSC').value||null,sort_order:parseInt($('iSO').value)||0,lyrics:$('iSL').value.trim(),obs:$('iSObs').value.trim()};
-  var r;
-  if(editingId) r=await sb.from('songs').update(payload).eq('id',editingId).eq('user_id',user.id).select('*,categories(name)').single();
-  else r=await sb.from('songs').insert(payload).select('*,categories(name)').single();
-  if(r.error) toast(r.error.message,'err');
-  else{var d=r.data;var obj={id:d.id,name:d.name||'',tom:d.tom||'C',artist:d.artist||'',category_id:d.category_id,sort_order:d.sort_order||0,lyrics:d.lyrics||'',obs:d.obs||'',category_name:(d.categories&&d.categories.name)||null};if(editingId){var i=songs.findIndex(function(x){return x.id===editingId;});if(i>-1)songs[i]=obj;}else songs.push(obj);so('soSong',false);updateStats();render();toast('Música salva','ok');}
-  $('btnSaveSong').disabled=false;checkSongForm();
+
+function checkSongForm(){ $('btnSaveSong').disabled = !($('iSN').value.trim() && $('iST').value.trim()); }
+ $('iSN').addEventListener('input', checkSongForm);
+ $('iST').addEventListener('input', checkSongForm);
+ $('fab').addEventListener('click', function(){ openSongForm(null); });
+ $('btnXSong').addEventListener('click', function(){ so('soSong', false); });
+ $('soSong').addEventListener('click', function(e){ if(e.target===$('soSong')) so('soSong', false); });
+
+ $('btnSaveSong').addEventListener('click', async function(){
+  var name = $('iSN').value.trim();
+  var tom = $('iST').value.trim();
+  if(!name || !tom) return;
+  $('btnSaveSong').disabled = true;
+  try {
+    var payload = {
+      user_id: user.id, name: name, tom: tom, artist: $('iSA').value.trim(),
+      category_id: $('iSC').value || null, sort_order: safeInt($('iSO').value),
+      lyrics: $('iSL').value.trim(), obs: $('iSObs').value.trim()
+    };
+    var r;
+    if(editingId){
+      r = await sb.from('songs').update(payload).eq('id', editingId).eq('user_id', user.id).select('*,categories(name)').single();
+    } else {
+      r = await sb.from('songs').insert(payload).select('*,categories(name)').single();
+    }
+    if(r && r.error){ toast(r.error.message, 'err'); }
+    else if(r && r.data){
+      var d = r.data;
+      var catName = null;
+      if(d.categories && typeof d.categories === 'object' && d.categories.name) catName = d.categories.name;
+      var obj = {
+        id: d.id || '', name: safeStr(d.name), tom: safeStr(d.tom) || 'C', artist: safeStr(d.artist),
+        category_id: d.category_id || null, sort_order: safeInt(d.sort_order),
+        lyrics: safeStr(d.lyrics), obs: safeStr(d.obs), category_name: catName
+      };
+      if(editingId){
+        for(var i = 0; i < songs.length; i++){ if(songs[i] && songs[i].id === editingId){ songs[i] = obj; break; } }
+      } else {
+        songs.push(obj);
+      }
+      so('soSong', false);
+      updateStats();
+      render();
+      toast('Música salva', 'ok');
+    }
+  } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
+  $('btnSaveSong').disabled = false;
+  checkSongForm();
 });
 
- $('iSrc').addEventListener('input',function(){search=$('iSrc').value.trim().toLowerCase();$('btnSrcX').classList.toggle('show',search.length>0);renderSongs();});
- $('btnSrcX').addEventListener('click',function(){$('iSrc').value='';search='';$('btnSrcX').classList.remove('show');renderSongs();});
+// ═══ SEARCH ═══
+ $('iSrc').addEventListener('input', function(){ search=$('iSrc').value.trim().toLowerCase(); $('btnSrcX').classList.toggle('show', search.length>0); renderSongs(); });
+ $('btnSrcX').addEventListener('click', function(){ $('iSrc').value=''; search=''; $('btnSrcX').classList.remove('show'); renderSongs(); });
 
- $('btnAlert').addEventListener('click',function(){var m=prompt("Aviso para a banda:");if(m&&m.trim())toast(m.trim(),'alert');});
-async function toggleWake(){try{if(wakeLock){await wakeLock.release();wakeLock=null;$('btnWake').classList.remove('on');toast('Tela pode apagar','info');}else{wakeLock=await navigator.wakeLock.request('screen');$('btnWake').classList.add('on');toast('Tela sempre acesa','ok');wakeLock.addEventListener('release',function(){$('btnWake').classList.remove('on');});}}catch(e){}}
- $('btnWake').addEventListener('click',toggleWake);
-document.addEventListener('visibilitychange',async function(){if(wakeLock&&document.visibilityState==='visible'){try{wakeLock=await navigator.wakeLock.request('screen');}catch(e){}}});
+// ═══ HEADER ═══
+ $('btnAlert').addEventListener('click', function(){ var m=prompt("Aviso para a banda:"); if(m&&m.trim()) toast(m.trim(), 'alert'); });
 
- $('btnPdf').addEventListener('click',function(){
-  if(!songs.length){toast('Sem músicas','err');return;}
-  var P=window.jspdf.jsPDF,doc=new P({unit:'mm',format:'a4'});var pw=doc.internal.pageSize.getWidth(),m=15,y=15;
-  doc.setFillColor(5,5,8);doc.rect(0,0,pw,32,'F');
-  doc.setTextColor(10,132,255);doc.setFontSize(22);doc.setFont('helvetica','bold');doc.text('SETLIST',m,y);
-  doc.setTextColor(142,142,147);doc.setFontSize(10);doc.setFont('helvetica','normal');
+async function toggleWake(){
+  try{
+    if(wakeLock){ await wakeLock.release(); wakeLock=null; $('btnWake').classList.remove('on'); toast('Tela pode apagar','info'); }
+    else{ wakeLock=await navigator.wakeLock.request('screen'); $('btnWake').classList.add('on'); toast('Tela sempre acesa','ok'); wakeLock.addEventListener('release',function(){$('btnWake').classList.remove('on');}); }
+  } catch(e){}
+}
+ $('btnWake').addEventListener('click', toggleWake);
+document.addEventListener('visibilitychange', async function(){ if(wakeLock&&document.visibilityState==='visible'){ try{wakeLock=await navigator.wakeLock.request('screen');}catch(e){} }});
+
+// ═══ PDF ═══
+ $('btnPdf').addEventListener('click', function(){
+  if(!songs.length){ toast('Sem músicas','err'); return; }
+  var P=window.jspdf.jsPDF, doc=new P({unit:'mm',format:'a4'});
+  var pw=doc.internal.pageSize.getWidth(), m=15, y=15;
+  doc.setFillColor(5,5,8); doc.rect(0,0,pw,32,'F');
+  doc.setTextColor(10,132,255); doc.setFontSize(22); doc.setFont('helvetica','bold'); doc.text('SETLIST',m,y);
+  doc.setTextColor(142,142,147); doc.setFontSize(10); doc.setFont('helvetica','normal');
   doc.text(new Date().toLocaleDateString('pt-BR'),pw-m,y,{align:'right'});
-  if(user) doc.text(user.name,pw/2,y,{align:'center'});y=42;
-  var grps=activeCat==='all'?cats:cats.filter(function(c){return c.id===activeCat;});
-  function grp(list,title){if(y>260){doc.addPage();y=20;}doc.setFillColor(10,132,255);doc.rect(m,y,pw-m*2,7,'F');doc.setTextColor(255,255,255);doc.setFontSize(11);doc.setFont('helvetica','bold');doc.text(title.toUpperCase(),m+4,y+5);y+=12;list.forEach(function(s){if(y>275){doc.addPage();y=20;}doc.setTextColor(245,245,247);doc.setFontSize(12);doc.setFont('helvetica','bold');doc.text(s.name,m+4,y+3);doc.setTextColor(255,200,0);doc.text(s.tom,pw-m-doc.getTextWidth(s.tom),y+3);if(s.artist){doc.setTextColor(142,142,147);doc.setFontSize(9);doc.setFont('helvetica','normal');doc.text(s.artist,m+4,y+8);y+=14;}else y+=11;});y+=8;}
-  if(!grps.length)grp(songs,'Geral');else grps.forEach(function(c){var ls=songs.filter(function(s){return s.category_id===c.id;});if(ls.length)grp(ls,c.name);});
-  doc.save('SetList.pdf');toast('PDF exportado','ok');
+  if(user) doc.text(safeStr(user.name),pw/2,y,{align:'center'});
+  y=42;
+  var grps = activeCat==='all' ? cats : cats.filter(function(c){ return c.id===activeCat; });
+  function grp(list,title){
+    if(y>260){doc.addPage();y=20;}
+    doc.setFillColor(10,132,255); doc.rect(m,y,pw-m*2,7,'F');
+    doc.setTextColor(255,255,255); doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.text(title.toUpperCase(),m+4,y+5); y+=12;
+    for(var i=0;i<list.length;i++){
+      var s=list[i]; if(!s) continue;
+      if(y>275){doc.addPage();y=20;}
+      doc.setTextColor(245,245,247); doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.text(safeStr(s.name),m+4,y+3);
+      doc.setTextColor(255,200,0); doc.text(safeStr(s.tom),pw-m-doc.getTextWidth(safeStr(s.tom)),y+3);
+      if(s.artist){doc.setTextColor(142,142,147);doc.setFontSize(9);doc.setFont('helvetica','normal');doc.text(safeStr(s.artist),m+4,y+8);y+=14;}else y+=11;
+    }
+    y+=8;
+  }
+  if(!grps.length) grp(songs,'Geral');
+  else for(var g=0;g<grps.length;g++){ var ls=songs.filter(function(s){return s.category_id===grps[g].id;}); if(ls.length) grp(ls,grps[g].name); }
+  doc.save('SetList.pdf');
+  toast('PDF exportado','ok');
 });
 
- $('btnProf').addEventListener('click',function(){setUserUI();updateStats();so('soProf',true);});
- $('btnXProf').addEventListener('click',function(){so('soProf',false);});
- $('soProf').addEventListener('click',function(e){if(e.target===$('soProf'))so('soProf',false);});
- $('btnUpdN').addEventListener('click',async function(){var n=$('pNI').value.trim();if(!n)return;var r=await sb.auth.updateUser({data:{name:n}});if(r.error)toast(r.error.message,'err');else{user.name=n;setUserUI();toast('Nome atualizado','ok');}});
- $('btnExp').addEventListener('click',function(){var bk={exported_at:new Date().toISOString(),user:user.name,categories:cats,songs:songs.map(function(s){return{name:s.name,tom:s.tom,artist:s.artist,category_name:s.category_name,sort_order:s.sort_order,lyrics:s.lyrics,obs:s.obs};})};var b=new Blob([JSON.stringify(bk,null,2)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='setlist_'+new Date().toISOString().slice(0,10)+'.json';a.click();toast('Backup baixado','ok');});
- $('btnImp').addEventListener('click',function(){$('fImp').click();});
- $('fImp').addEventListener('change',async function(e){var f=e.target.files[0];if(!f)return;var rd=new FileReader();rd.onload=async function(ev){try{var d=JSON.parse(ev.target.result);if(!d.songs||!d.songs.length){toast('Arquivo sem músicas','err');return;}if(!confirm('Importar '+d.songs.length+' músicas?'))return;var cnt=0;if(d.categories&&d.categories.length){for(var i=0;i<d.categories.length;i++){var cn=d.categories[i].name;if(!cats.find(function(x){return x.name===cn;})){var r=await sb.from('categories').insert({user_id:user.id,name:cn,sort_order:d.categories[i].sort_order||0}).select().single();if(r.data)cats.push(r.data);}}}for(var j=0;j<d.songs.length;j++){var s=d.songs[j];var cid=null;if(s.category_name){var fc=cats.find(function(x){return x.name===s.category_name;});if(fc)cid=fc.id;}var r2=await sb.from('songs').insert({user_id:user.id,name:s.name,tom:s.tom||'C',artist:s.artist||'',category_id:cid,sort_order:s.sort_order||0,lyrics:s.lyrics||'',obs:s.obs||''}).select('*,categories(name)').single();if(r2.data){songs.push({id:r2.data.id,name:r2.data.name||'',tom:r2.data.tom||'C',artist:r2.data.artist||'',category_id:r2.data.category_id,sort_order:r2.data.sort_order||0,lyrics:r2.data.lyrics||'',obs:r2.data.obs||'',category_name:(r2.data.categories&&r2.data.categories.name)||null});cnt++;}}updateStats();render();toast(cnt+' músicas importadas','ok');}catch(err){toast('Arquivo inválido','err');}};rd.readAsText(f);e.target.value='';});
- $('btnOut').addEventListener('click',async function(){await sb.auth.signOut();user=null;cats=[];songs=[];rtCh.forEach(function(c){c.unsubscribe();});rtCh=[];so('soProf',false);showTela('telaAuth');$('aEmail').value='';$('aPass').value='';$('aName').value='';toast('Até logo!','info');});
- $('btnReset').addEventListener('click',function(){if(!confirm('Apagar configuração do banco e desconectar?'))return;localStorage.removeItem('sb_url');localStorage.removeItem('sb_key');sb=null;user=null;cats=[];songs=[];rtCh.forEach(function(c){c.unsubscribe();});rtCh=[];so('soProf',false);showTela('telaSetup');$('sUrl').value='';$('sKey').value='';toast('Resetado','info');});
+// ═══ PROFILE ═══
+ $('btnProf').addEventListener('click', function(){ setUserUI(); updateStats(); so('soProf', true); });
+ $('btnXProf').addEventListener('click', function(){ so('soProf', false); });
+ $('soProf').addEventListener('click', function(e){ if(e.target===$('soProf')) so('soProf', false); });
+
+ $('btnUpdN').addEventListener('click', async function(){
+  var n = $('pNI').value.trim();
+  if(!n) return;
+  try {
+    var r = await sb.auth.updateUser({data:{name:n}});
+    if(r && r.error) toast(r.error.message, 'err');
+    else { user.name = n; setUserUI(); toast('Nome atualizado', 'ok'); }
+  } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
+});
+
+ $('btnExp').addEventListener('click', function(){
+  var bk = {
+    exported_at: new Date().toISOString(),
+    user: user ? user.name : '',
+    categories: cats,
+    songs: songs.map(function(s){ return {name:s.name,tom:s.tom,artist:s.artist,category_name:s.category_name,sort_order:s.sort_order,lyrics:s.lyrics,obs:s.obs}; })
+  };
+  var b = new Blob([JSON.stringify(bk, null, 2)], {type:'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(b);
+  a.download = 'setlist_' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  toast('Backup baixado', 'ok');
+});
+
+ $('btnImp').addEventListener('click', function(){ $('fImp').click(); });
+ $('fImp').addEventListener('change', async function(e){
+  var f = e.target.files[0];
+  if(!f) return;
+  var rd = new FileReader();
+  rd.onload = async function(ev){
+    try {
+      var d = JSON.parse(ev.target.result);
+      if(!d.songs || !d.songs.length){ toast('Arquivo sem músicas', 'err'); return; }
+      if(!confirm('Importar ' + d.songs.length + ' músicas?')) return;
+      var cnt = 0;
+      if(d.categories && d.categories.length){
+        for(var i = 0; i < d.categories.length; i++){
+          var cn = safeStr(d.categories[i].name);
+          if(!cn) continue;
+          var exists = false;
+          for(var x = 0; x < cats.length; x++){ if(cats[x] && cats[x].name === cn){ exists = true; break; } }
+          if(!exists){
+            var r = await sb.from('categories').insert({user_id:user.id, name:cn, sort_order:safeInt(d.categories[i].sort_order)}).select().single();
+            if(r && r.data) cats.push({id:r.data.id, name:safeStr(r.data.name), sort_order:safeInt(r.data.sort_order)});
+          }
+        }
+      }
+      for(var j = 0; j < d.songs.length; j++){
+        var s = d.songs[j];
+        var cid = null;
+        if(s.category_name){
+          for(var y = 0; y < cats.length; y++){ if(cats[y] && cats[y].name === s.category_name){ cid = cats[y].id; break; } }
+        }
+        var r2 = await sb.from('songs').insert({user_id:user.id, name:safeStr(s.name), tom:safeStr(s.tom)||'C', artist:safeStr(s.artist), category_id:cid, sort_order:safeInt(s.sort_order), lyrics:safeStr(s.lyrics), obs:safeStr(s.obs)}).select('*,categories(name)').single();
+        if(r2 && r2.data){
+          var catName2 = null;
+          if(r2.data.categories && typeof r2.data.categories === 'object' && r2.data.categories.name) catName2 = r2.data.categories.name;
+          songs.push({id:r2.data.id, name:safeStr(r2.data.name), tom:safeStr(r2.data.tom)||'C', artist:safeStr(r2.data.artist), category_id:r2.data.category_id, sort_order:safeInt(r2.data.sort_order), lyrics:safeStr(r2.data.lyrics), obs:safeStr(r2.data.obs), category_name:catName2});
+          cnt++;
+        }
+      }
+      updateStats(); render(); toast(cnt + ' músicas importadas', 'ok');
+    } catch(err){ toast('Arquivo inválido', 'err'); }
+  };
+  rd.readAsText(f);
+  e.target.value = '';
+});
+
+ $('btnOut').addEventListener('click', async function(){
+  try { await sb.auth.signOut(); } catch(e){}
+  user=null; cats=[]; songs=[];
+  rtCh.forEach(function(c){ try{c.unsubscribe();}catch(e){} }); rtCh=[];
+  so('soProf', false);
+  showTela('telaAuth');
+  $('aEmail').value=''; $('aPass').value=''; $('aName').value='';
+  toast('Até logo!', 'info');
+});
+
+ $('btnReset').addEventListener('click', function(){
+  if(!confirm('Apagar configuração do banco e desconectar?')) return;
+  localStorage.removeItem('sb_url');
+  localStorage.removeItem('sb_key');
+  sb=null; user=null; cats=[]; songs=[];
+  rtCh.forEach(function(c){ try{c.unsubscribe();}catch(e){} }); rtCh=[];
+  so('soProf', false);
+  showTela('telaSetup');
+  $('sUrl').value=''; $('sKey').value='';
+  toast('Resetado', 'info');
+});
 
 // ═══ AUTO-START ═══
 (async function(){
@@ -672,16 +962,16 @@ document.addEventListener('visibilitychange',async function(){if(wakeLock&&docum
     sb = window.supabase.createClient(savedUrl, savedKey);
   } catch(e){
     showTela('telaSetup');
-    setupMsg('Erro ao criar cliente: ' + e.message, false);
+    setupMsg('Erro ao criar cliente: ' + (e.message || 'desconhecido'), false);
     return;
   }
 
   try {
     var test = await sb.from('categories').select('id').limit(1);
-    if(test.error){
-      if(test.error.message.indexOf('does not exist') > -1){
+    if(test && test.error){
+      if((test.error.message || '').indexOf('does not exist') > -1){
         showTela('telaSetup');
-        setupMsg('Conexão OK, mas as tabelas não existem. Rode o SQL no Supabase primeiro.', false);
+        setupMsg('Conexão OK, mas as tabelas não existem. Rode o SQL no Supabase.', false);
       } else {
         showTela('telaSetup');
         setupMsg('Erro no banco: ' + test.error.message, false);
@@ -690,7 +980,7 @@ document.addEventListener('visibilitychange',async function(){if(wakeLock&&docum
     }
   } catch(e){
     showTela('telaSetup');
-    setupMsg('Falha na conexão: ' + e.message, false);
+    setupMsg('Falha na conexão: ' + (e.message || 'desconhecido'), false);
     return;
   }
 
@@ -699,14 +989,13 @@ document.addEventListener('visibilitychange',async function(){if(wakeLock&&docum
 
   try {
     var sessionRes = await sb.auth.getSession();
-    if(sessionRes && sessionRes.data && sessionRes.data.session){
+    if(sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user){
       var u = sessionRes.data.session.user;
       if(u && u.id){
-        user = {
-          id: u.id,
-          email: u.email || '',
-          name: (u.user_metadata && u.user_metadata.name) || (u.email || '').split('@')[0]
-        };
+        var userName = '';
+        if(u.user_metadata && u.user_metadata.name) userName = u.user_metadata.name;
+        else if(u.email) userName = u.email.split('@')[0];
+        user = { id: u.id, email: safeStr(u.email), name: userName };
         showTela('telaApp');
         await boot();
         return;
