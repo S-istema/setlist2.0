@@ -262,750 +262,808 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 </div>
 
 <script>
- (function(){
-"use strict";
-
-var DEFAULT_URL = 'https://ofapfbrjpeyulkfgnimk.supabase.co';
-var DEFAULT_KEY = 'sb_publishable_UPI3ZHGUxIaTPBm9w5LOIg_uKppIPnX';
-
-var sb = null;
-var user = null;
-var cats = [];
-var songs = [];
-var activeCat = 'all';
-var search = '';
-var editingId = null;
-var isReg = false;
-var wakeLock = null;
-var vFontSize = 18;
-var rtCh = [];
-var loadingData = false;
-
-var $ = function(id){ return document.getElementById(id); };
-function esc(s){ var d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
-function safeStr(v){ return (v && typeof v === 'string') ? v : ''; }
-function safeInt(v){ var n=parseInt(v); return isNaN(n)?0:n; }
-
-function toast(msg, tipo){
-  tipo = tipo || 'ok';
-  var ic = {ok:'fa-circle-check',err:'fa-circle-xmark',info:'fa-circle-info',alert:'fa-bullhorn'};
-  var el = document.createElement('div');
-  el.className = 't t' + tipo.charAt(0) + (tipo==='alert'?'a':'');
-  el.innerHTML = '<i class="fa-solid '+(ic[tipo]||ic.ok)+'"></i><span>'+esc(msg)+'</span>';
-  $('tst').appendChild(el);
-  if(tipo==='alert' && navigator.vibrate) navigator.vibrate([100,50,100]);
-  setTimeout(function(){ if(el.parentNode) el.remove(); }, 3800);
-}
-
-function showTela(id){
-  ['telaSetup','telaAuth','telaApp'].forEach(function(t){ $(t).classList.toggle('on', t===id); });
-}
-function so(id, abrir){ $(id).classList.toggle('open', abrir); }
-
-// ═══ SETUP ═══
-var savedUrl = localStorage.getItem('sb_url') || DEFAULT_URL;
-var savedKey = localStorage.getItem('sb_key') || DEFAULT_KEY;
- $('sUrl').value = savedUrl;
- $('sKey').value = savedKey;
-
-function setupMsg(txt, ok){
-  var el = $('setupMsg');
-  el.className = 'setup-msg ' + (ok ? 'ok' : 'err');
-  el.querySelector('i').className = 'fa-solid ' + (ok ? 'fa-circle-check' : 'fa-circle-xmark');
-  el.querySelector('span').textContent = txt;
-}
-
-function doConnect(url, key, callback){
-  try {
-    var client = window.supabase.createClient(url, key);
-    client.from('categories').select('id').limit(1).then(function(res){
-      if(res && res.error){
-        if((res.error.message || '').indexOf('does not exist') > -1){
-          callback(false, 'Conectou, mas as tabelas não existem. Rode o SQL no Supabase.');
-        } else {
-          callback(false, 'Erro: ' + res.error.message);
-        }
-        return;
-      }
-      callback(true, null, client);
-    }).catch(function(err){
-      callback(false, 'Falha: ' + (err.message || 'desconhecido'));
-    });
-  } catch(err){
-    callback(false, 'Erro: ' + (err.message || 'desconhecido'));
-  }
-}
-
- $('btnSetup').addEventListener('click', function(){
-  var url = $('sUrl').value.trim().replace(/\/+$/, '');
-  var key = $('sKey').value.trim();
-  if(!url || !key){ setupMsg('Preencha URL e chave', false); return; }
-  $('btnSetup').disabled = true;
-  $('btnSetup').innerHTML = '<span class="spinning"></span> Testando...';
-  doConnect(url, key, function(ok, err, client){
-    $('btnSetup').disabled = false;
-    $('btnSetup').innerHTML = '<i class="fa-solid fa-plug"></i> Conectar';
-    if(ok){
-      localStorage.setItem('sb_url', url);
-      localStorage.setItem('sb_key', key);
-      sb = client;
-      setupMsg('Conexão OK!', true);
-      setTimeout(function(){ showTela('telaAuth'); }, 500);
-    } else {
-      setupMsg(err, false);
+    (function(){
+    "use strict";
+    
+    // ═══ CONFIG ═══
+    var DEFAULT_URL = 'https://ofapfbrjpeyulkfgnimk.supabase.co';
+    var DEFAULT_KEY = 'sb_publishable_UPI3ZHGUxIaTPBm9w5LOIg_uKppIPnX';
+    var POLL_MS = 5000;    // fallback: verifica o banco a cada X ms (baixe p/ 2000 se quiser mais rápido)
+    var RT_DEBOUNCE = 300; // agrupa eventos realtime seguidos em uma recarga só
+    
+    var sb = null;
+    var user = null;
+    var cats = [];
+    var songs = [];
+    var activeCat = 'all';
+    var search = '';
+    var editingId = null;
+    var isReg = false;
+    var wakeLock = null;
+    var vFontSize = 18;
+    var loadingData = false;
+    
+    // realtime / polling
+    var rtCh = [];
+    var pollTimer = null;
+    var reloadT = null;
+    var lastHash = '';
+    
+    var $ = function(id){ return document.getElementById(id); };
+    function esc(s){ var d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+    function safeStr(v){ return (v && typeof v === 'string') ? v : ''; }
+    function safeInt(v){ var n=parseInt(v); return isNaN(n)?0:n; }
+    
+    function toast(msg, tipo){
+      tipo = tipo || 'ok';
+      var ic = {ok:'fa-circle-check',err:'fa-circle-xmark',info:'fa-circle-info',alert:'fa-bullhorn'};
+      var el = document.createElement('div');
+      el.className = 't t' + tipo.charAt(0) + (tipo==='alert'?'a':'');
+      el.innerHTML = '<i class="fa-solid '+(ic[tipo]||ic.ok)+'"></i><span>'+esc(msg)+'</span>';
+      $('tst').appendChild(el);
+      if(tipo==='alert' && navigator.vibrate) navigator.vibrate([100,50,100]);
+      setTimeout(function(){ if(el.parentNode) el.remove(); }, 3800);
     }
-  });
-});
-
-// ═══ AUTH ═══
-function flipAuth(){
-  $('fName').classList.toggle('hid', !isReg);
-  $('btnAuthTxt').textContent = isReg ? 'Criar Conta' : 'Entrar';
-  $('aFlip').innerHTML = isReg
-    ? 'Já tem conta? <a id="aFlipLnk">Fazer login</a>'
-    : 'Não tem conta? <a id="aFlipLnk">Cadastre-se</a>';
-  $('aFlipLnk').addEventListener('click', function(){ isReg = !isReg; flipAuth(); });
-}
-flipAuth();
-
-function authErr(msg){
-  $('aErr').querySelector('span').textContent = msg;
-  $('aErr').classList.add('show');
-  setTimeout(function(){ $('aErr').classList.remove('show'); }, 5000);
-}
-
- $('btnAuth').addEventListener('click', async function(){
-  if(!sb){ authErr('Banco não conectado. Recarregue a página.'); return; }
-  var email = $('aEmail').value.trim();
-  var pass = $('aPass').value;
-  if(!email || !pass){ authErr('Preencha email e senha'); return; }
-  if(pass.length < 6){ authErr('Senha: mínimo 6 caracteres'); return; }
-
-  var btn = $('btnAuth');
-  btn.disabled = true;
-  $('btnAuthTxt').innerHTML = '<span class="spinning"></span>';
-
-  try {
-    var res;
-    if(isReg){
-      var name = $('aName').value.trim();
-      if(!name){
-        authErr('Preencha seu nome');
-        btn.disabled = false;
-        $('btnAuthTxt').textContent = 'Criar Conta';
-        return;
-      }
-      res = await sb.auth.signUp({ email: email, password: pass, options: { data: { name: name } } });
-    } else {
-      res = await sb.auth.signInWithPassword({ email: email, password: pass });
+    
+    function showTela(id){
+      ['telaSetup','telaAuth','telaApp'].forEach(function(t){ $(t).classList.toggle('on', t===id); });
     }
-
-    var u = null;
-    if(res && res.data && res.data.user) u = res.data.user;
-    if(!u || !u.id){
-      authErr('Resposta inesperada do servidor');
-      btn.disabled = false;
-      $('btnAuthTxt').textContent = isReg ? 'Criar Conta' : 'Entrar';
-      return;
+    function so(id, abrir){ $(id).classList.toggle('open', abrir); }
+    
+    // ═══ SETUP ═══
+    var savedUrl = localStorage.getItem('sb_url') || DEFAULT_URL;
+    var savedKey = localStorage.getItem('sb_key') || DEFAULT_KEY;
+     $('sUrl').value = savedUrl;
+     $('sKey').value = savedKey;
+    
+    function setupMsg(txt, ok){
+      var el = $('setupMsg');
+      el.className = 'setup-msg ' + (ok ? 'ok' : 'err');
+      el.querySelector('i').className = 'fa-solid ' + (ok ? 'fa-circle-check' : 'fa-circle-xmark');
+      el.querySelector('span').textContent = txt;
     }
-
-    var userName = '';
-    if(u.user_metadata && u.user_metadata.name) userName = u.user_metadata.name;
-    else if(u.email) userName = u.email.split('@')[0];
-
-    user = { id: u.id, email: safeStr(u.email), name: userName };
-    showTela('telaApp');
-    await boot();
-    toast('Bem-vindo, ' + user.name.split(' ')[0] + '!', 'ok');
-
-  } catch(e){
-    var m = safeStr(e.message).replace(/\[.*?\]\s*/g, '');
-    if(m.indexOf('Invalid login') > -1) m = 'Email ou senha incorretos';
-    if(m.indexOf('already registered') > -1) m = 'Email já cadastrado. Faça login.';
-    authErr(m);
-  } finally {
-    btn.disabled = false;
-    $('btnAuthTxt').textContent = isReg ? 'Criar Conta' : 'Entrar';
-  }
-});
-
-['aEmail','aPass','aName'].forEach(function(id){
-  $(id).addEventListener('keydown', function(e){ if(e.key==='Enter') $('btnAuth').click(); });
-});
-
-// ═══ STATUS / UI ═══
-function setStatus(lbl, det, dot){
-  $('sLbl').textContent = lbl;
-  $('sDet').textContent = det || '';
-  $('sDot').className = 'sdot ' + (dot || '');
-}
-
-function setUserUI(){
-  if(!user) return;
-  var ini = safeStr(user.name).charAt(0).toUpperCase() || 'U';
-  $('uAv').textContent = ini;
-  $('uNm').textContent = safeStr(user.name).split(' ')[0];
-  $('pAv').textContent = ini;
-  $('pNm').textContent = safeStr(user.name);
-  $('pEm').textContent = safeStr(user.email);
-  $('pNI').value = safeStr(user.name);
-}
-
-function updateStats(){
-  $('st1').textContent = songs.length;
-  $('st2').textContent = cats.length;
-  $('st3').textContent = songs.filter(function(s){ return safeStr(s.lyrics).length > 0; }).length;
-}
-
-// ═══ LOAD DO BANCO ═══
-async function loadCats(){
-  if(!sb || !user || !user.id) return;
-  var r = await sb.from('categories').select('*').eq('user_id', user.id).order('sort_order',{ascending:true}).order('name',{ascending:true});
-  if(r && r.error) throw new Error(r.error.message);
-  var data = (r && r.data && Array.isArray(r.data)) ? r.data : [];
-  cats = data.map(function(c){
-    return {
-      id: c.id || '',
-      name: safeStr(c.name),
-      sort_order: safeInt(c.sort_order)
-    };
-  });
-}
-
-async function loadSongs(){
-  if(!sb || !user || !user.id) return;
-  var r = await sb.from('songs').select('*, categories(name)').eq('user_id', user.id).order('sort_order',{ascending:true}).order('name',{ascending:true});
-  if(r && r.error) throw new Error(r.error.message);
-  var data = (r && r.data && Array.isArray(r.data)) ? r.data : [];
-  songs = data.map(function(s){
-    var catName = null;
-    if(s.categories && typeof s.categories === 'object' && s.categories.name) catName = s.categories.name;
-    return {
-      id: s.id || '',
-      name: safeStr(s.name),
-      tom: safeStr(s.tom) || 'C',
-      artist: safeStr(s.artist),
-      category_id: s.category_id || null,
-      sort_order: safeInt(s.sort_order),
-      lyrics: safeStr(s.lyrics),
-      obs: safeStr(s.obs),
-      category_name: catName
-    };
-  });
-}
-
-async function loadAll(){
-  await Promise.all([loadCats(), loadSongs()]);
-  updateStats();
-  render();
-}
-
-// ═══ REALTIME — simples: qualquer mudança recarrega tudo ═══
-function wireRealtime(){
-  rtCh.forEach(function(c){ try{ c.unsubscribe(); }catch(e){} });
-  rtCh = [];
-  if(!sb || !user || !user.id) return;
-  var p = 'reload_' + user.id;
-
-  var c1 = sb.channel(p).on('postgres_changes',{
-    event: '*', schema: 'public', table: 'categories',
-    filter: 'user_id=eq.' + user.id
-  }, function(){
-    if(!loadingData) silentReload();
-  }).subscribe();
-  rtCh.push(c1);
-
-  var c2 = sb.channel(p+'_s').on('postgres_changes',{
-    event: '*', schema: 'public', table: 'songs',
-    filter: 'user_id=eq.' + user.id
-  }, function(){
-    if(!loadingData) silentReload();
-  }).subscribe();
-  rtCh.push(c2);
-}
-
-// Recarrega silenciosamente sem mostrar erro
-async function silentReload(){
-  loadingData = true;
-  try {
-    await loadAll();
-  } catch(e){}
-  loadingData = false;
-}
-
-// ═══ BOOT ═══
-async function boot(){
-  if(!user || !user.id){ setStatus('Erro','Usuário inválido','off'); return; }
-  if(!sb){ setStatus('Erro','Sem conexão','off'); return; }
-  setUserUI();
-  setStatus('Conectando','Supabase','wait');
-  try {
-    await loadAll();
-    wireRealtime();
-    setStatus('Online','Conectado','live');
-  } catch(e){
-    setStatus('Erro','Tente novamente','off');
-    toast('Erro ao carregar: ' + safeStr(e.message), 'err');
-  }
-}
-
-// ═══ RENDER ═══
-function renderChips(){
-  var el = $('chips');
-  if(!el) return;
-  el.innerHTML = '';
-  var a = document.createElement('div');
-  a.className = 'chip' + (activeCat==='all' ? ' sel' : '');
-  a.innerHTML = 'Todas <span class="chip-n">' + songs.length + '</span>';
-  a.onclick = function(){ activeCat='all'; renderSongs(); renderChips(); };
-  el.appendChild(a);
-
-  for(var i = 0; i < cats.length; i++){
-    var c = cats[i];
-    if(!c || !c.id) continue;
-    var ch = document.createElement('div');
-    ch.className = 'chip' + (activeCat===c.id ? ' sel' : '');
-    var cnt = songs.filter(function(s){ return s.category_id === c.id; }).length;
-    ch.innerHTML = esc(c.name) + ' <span class="chip-n">' + cnt + '</span>';
-    (function(catId){
-      var ht = null;
-      ch.addEventListener('touchstart', function(){ ht=setTimeout(function(){ deleteCat(catId); }, 600); }, {passive:true});
-      ch.addEventListener('touchend', function(e){ clearTimeout(ht); activeCat=catId; renderSongs(); renderChips(); e.preventDefault(); });
-      ch.addEventListener('touchmove', function(){ clearTimeout(ht); }, {passive:true});
-      ch.addEventListener('click', function(){ activeCat=catId; renderSongs(); renderChips(); });
-      ch.addEventListener('contextmenu', function(e){ e.preventDefault(); deleteCat(catId); });
-    })(c.id);
-    el.appendChild(ch);
-  }
-}
-
-function fillCatSel(){
-  var sel = $('iSC');
-  if(!sel) return;
-  var v = sel.value;
-  sel.innerHTML = '<option value="">Selecione...</option>';
-  for(var i = 0; i < cats.length; i++){
-    var c = cats[i];
-    if(!c || !c.id) continue;
-    var o = document.createElement('option');
-    o.value = c.id;
-    o.textContent = c.name;
-    sel.appendChild(o);
-  }
-  for(var j = 0; j < cats.length; j++){
-    if(cats[j] && cats[j].id === v){ sel.value = v; break; }
-  }
-}
-
-function renderSongs(){
-  var list = filtered();
-  var el = $('sList');
-  if(!el) return;
-  el.innerHTML = '';
-  $('emSt').classList.toggle('hid', list.length > 0);
-  $('lB').textContent = list.length;
-
-  var co = null;
-  for(var k = 0; k < cats.length; k++){
-    if(cats[k] && cats[k].id === activeCat){ co = cats[k]; break; }
-  }
-  $('lH').textContent = activeCat==='all' ? 'Músicas' : (co ? co.name : 'Músicas');
-
-  if(!list.length && search){
-    $('emSt').innerHTML = '<i class="fa-solid fa-magnifying-glass"></i><p>Nenhum resultado para "<strong>'+esc(search)+'</strong>"</p>';
-    $('emSt').classList.remove('hid');
-  } else if(!list.length){
-    $('emSt').innerHTML = '<i class="fa-regular fa-folder-open"></i><p>Nenhuma música aqui.<br>Toque no <strong>+</strong> para começar.</p>';
-  }
-
-  for(var i = 0; i < list.length; i++){
-    var s = list[i];
-    if(!s || !s.id) continue;
-    var hasL = safeStr(s.lyrics).length > 0;
-    var card = document.createElement('div');
-    card.className = 'card';
-    card.style.animationDelay = (i * 0.025) + 's';
-
-    var sub = '';
-    if(s.artist) sub = '<div class="csub">' + (hasL ? '<i class="fa-solid fa-align-left"></i>' : '') + esc(s.artist) + '</div>';
-    else if(hasL) sub = '<div class="csub"><i class="fa-solid fa-align-left"></i> Letra</div>';
-
-    card.innerHTML = '<div class="card-in"><div class="tom"><b>'+esc(s.tom)+'</b><small>tom</small></div><div class="cmeta"><div class="cname">'+esc(s.name)+'</div>'+sub+'</div><div class="ctools"><button class="tb ed"><i class="fa-solid fa-pen-to-square"></i></button><button class="tb dl"><i class="fa-regular fa-trash-can"></i></button></div></div>';
-
-    (function(songId){
-      card.addEventListener('click', function(e){ if(!e.target.closest('.tb')) openViewer(songId); });
-      card.querySelector('.ed').addEventListener('click', function(e){ e.stopPropagation(); openSongForm(songId); });
-      card.querySelector('.dl').addEventListener('click', function(e){ e.stopPropagation(); deleteSong(songId); });
-    })(s.id);
-
-    el.appendChild(card);
-  }
-}
-
-function filtered(){
-  var list = activeCat==='all' ? songs.slice() : songs.filter(function(s){ return s.category_id === activeCat; });
-  if(search){
-    list = list.filter(function(s){
-      return (s.name && s.name.toLowerCase().indexOf(search) > -1) || (s.artist && s.artist.toLowerCase().indexOf(search) > -1);
-    });
-  }
-  return list;
-}
-
-function render(){ renderChips(); renderSongs(); fillCatSel(); }
-
-// ═══ VIEWER ═══
-function openViewer(id){
-  var s = null;
-  for(var i = 0; i < songs.length; i++){ if(songs[i] && songs[i].id === id){ s = songs[i]; break; } }
-  if(!s) return;
-  var hasL = safeStr(s.lyrics).length > 0;
-  $('vTitle').textContent = s.name;
-  var h = '<div class="vw-hero"><div class="vw-tom"><b>'+esc(s.tom)+'</b><small>tom</small></div><div class="vw-h1">'+esc(s.name)+'</div>';
-  if(s.artist) h += '<div class="vw-art">'+esc(s.artist)+'</div>';
-  if(s.category_name) h += '<div class="vw-cat">'+esc(s.category_name)+'</div>';
-  h += '</div>';
-  h += hasL
-    ? '<div class="vw-lyr" id="vLyr" style="font-size:'+vFontSize+'px">'+esc(s.lyrics)+'</div>'
-    : '<div class="vw-lyr no" id="vLyr">Sem letra cadastrada</div>';
-  if(s.obs) h += '<div class="vw-obs"><strong>Obs:</strong> '+esc(s.obs)+'</div>';
-  $('vBody').innerHTML = h;
-  $('vBody').scrollTop = 0;
-  $('viewer').classList.add('open');
-  $('vFbar').classList.remove('show');
-}
-
- $('vClose').addEventListener('click', function(){ $('viewer').classList.remove('open'); $('vFbar').classList.remove('show'); });
-var lt = 0;
- $('vBody').addEventListener('touchend', function(){ var n=Date.now(); if(n-lt<300) $('viewer').classList.remove('open'); lt=n; });
- $('vFont').addEventListener('click', function(){ $('vFbar').classList.toggle('show'); });
- $('fUp').addEventListener('click', function(){
-  if(vFontSize < 40){ vFontSize += 2; var e=$('vLyr'); if(e) e.style.fontSize=vFontSize+'px'; $('fSz').textContent=vFontSize+'px'; }
-});
- $('fDn').addEventListener('click', function(){
-  if(vFontSize > 12){ vFontSize -= 2; var e=$('vLyr'); if(e) e.style.fontSize=vFontSize+'px'; $('fSz').textContent=vFontSize+'px'; }
-});
-
-// ═══ CRUD: CATEGORIAS ═══
-async function deleteCat(id){
-  if(!confirm('Excluir categoria?\nAs músicas não serão apagadas.')) return;
-  try {
-    await sb.from('songs').update({category_id:null}).eq('category_id', id).eq('user_id', user.id);
-    var r = await sb.from('categories').delete().eq('id', id).eq('user_id', user.id);
-    if(r && r.error){ toast(r.error.message, 'err'); return; }
-    if(activeCat === id) activeCat = 'all';
-    cats = cats.filter(function(c){ return c.id !== id; });
-    for(var i = 0; i < songs.length; i++){
-      if(songs[i] && songs[i].category_id === id){ songs[i].category_id = null; songs[i].category_name = null; }
-    }
-    render();
-    toast('Categoria removida', 'ok');
-  } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
-}
-
- $('btnAddCat').addEventListener('click', function(){ $('iCatN').value=''; so('soCat',true); setTimeout(function(){$('iCatN').focus();}, 350); });
- $('btnXCat').addEventListener('click', function(){ so('soCat', false); });
- $('soCat').addEventListener('click', function(e){ if(e.target===$('soCat')) so('soCat', false); });
- $('iCatN').addEventListener('keydown', function(e){ if(e.key==='Enter') $('btnSaveCat').click(); });
-
- $('btnSaveCat').addEventListener('click', async function(){
-  var n = $('iCatN').value.trim();
-  if(!n){ toast('Digite um nome', 'err'); return; }
-  $('btnSaveCat').disabled = true;
-  try {
-    var maxO = 0;
-    for(var i = 0; i < cats.length; i++){ if(cats[i] && cats[i].sort_order > maxO) maxO = cats[i].sort_order; }
-    var r = await sb.from('categories').insert({user_id:user.id, name:n, sort_order:maxO+1}).select().single();
-    if(r && r.error){ toast(r.error.message, 'err'); }
-    else if(r && r.data){ cats.push({id:r.data.id, name:safeStr(r.data.name), sort_order:safeInt(r.data.sort_order)}); cats.sort(function(a,b){return(a.sort_order||0)-(b.sort_order||0);}); render(); so('soCat',false); toast('Categoria criada', 'ok'); }
-  } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
-  $('btnSaveCat').disabled = false;
-});
-
-// ═══ CRUD: MÚSICAS ═══
-async function deleteSong(id){
-  if(!confirm('Excluir esta música?')) return;
-  try {
-    var r = await sb.from('songs').delete().eq('id', id).eq('user_id', user.id);
-    if(r && r.error){ toast(r.error.message, 'err'); return; }
-    songs = songs.filter(function(x){ return x.id !== id; });
-    updateStats(); render(); toast('Música removida', 'ok');
-  } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
-}
-
-function openSongForm(id){
-  if(!cats.length){ toast('Crie uma categoria primeiro', 'err'); $('btnAddCat').click(); return; }
-  fillCatSel();
-  editingId = id || null;
-  if(editingId){
-    var s = null;
-    for(var i = 0; i < songs.length; i++){ if(songs[i] && songs[i].id === editingId){ s = songs[i]; break; } }
-    if(s){
-      $('songShT').innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Editar Música';
-      $('iSN').value = s.name || '';
-      $('iST').value = s.tom || '';
-      $('iSO').value = s.sort_order || 0;
-      $('iSA').value = s.artist || '';
-      $('iSC').value = s.category_id || '';
-      $('iSL').value = s.lyrics || '';
-      $('iSObs').value = s.obs || '';
-    }
-  } else {
-    $('songShT').innerHTML = '<i class="fa-solid fa-music"></i> Nova Música';
-    $('iSN').value = ''; $('iST').value = ''; $('iSO').value = '';
-    $('iSA').value = ''; $('iSC').value = ''; $('iSL').value = ''; $('iSObs').value = '';
-  }
-  checkSongForm();
-  so('soSong', true);
-}
-
-function checkSongForm(){ $('btnSaveSong').disabled = !($('iSN').value.trim() && $('iST').value.trim()); }
- $('iSN').addEventListener('input', checkSongForm);
- $('iST').addEventListener('input', checkSongForm);
- $('fab').addEventListener('click', function(){ openSongForm(null); });
- $('btnXSong').addEventListener('click', function(){ so('soSong', false); });
- $('soSong').addEventListener('click', function(e){ if(e.target===$('soSong')) so('soSong', false); });
-
- $('btnSaveSong').addEventListener('click', async function(){
-  var name = $('iSN').value.trim();
-  var tom = $('iST').value.trim();
-  if(!name || !tom) return;
-  $('btnSaveSong').disabled = true;
-  try {
-    var payload = {
-      user_id: user.id, name: name, tom: tom, artist: $('iSA').value.trim(),
-      category_id: $('iSC').value || null, sort_order: safeInt($('iSO').value),
-      lyrics: $('iSL').value.trim(), obs: $('iSObs').value.trim()
-    };
-    var r;
-    if(editingId){
-      r = await sb.from('songs').update(payload).eq('id', editingId).eq('user_id', user.id).select('*,categories(name)').single();
-    } else {
-      r = await sb.from('songs').insert(payload).select('*,categories(name)').single();
-    }
-    if(r && r.error){ toast(r.error.message, 'err'); }
-    else if(r && r.data){
-      var d = r.data;
-      var catName = null;
-      if(d.categories && typeof d.categories === 'object' && d.categories.name) catName = d.categories.name;
-      var obj = {
-        id: d.id || '', name: safeStr(d.name), tom: safeStr(d.tom) || 'C', artist: safeStr(d.artist),
-        category_id: d.category_id || null, sort_order: safeInt(d.sort_order),
-        lyrics: safeStr(d.lyrics), obs: safeStr(d.obs), category_name: catName
-      };
-      if(editingId){
-        for(var i = 0; i < songs.length; i++){ if(songs[i] && songs[i].id === editingId){ songs[i] = obj; break; } }
-      } else {
-        songs.push(obj);
-      }
-      so('soSong', false);
-      updateStats();
-      render();
-      toast('Música salva', 'ok');
-    }
-  } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
-  $('btnSaveSong').disabled = false;
-  checkSongForm();
-});
-
-// ═══ SEARCH ═══
- $('iSrc').addEventListener('input', function(){ search=$('iSrc').value.trim().toLowerCase(); $('btnSrcX').classList.toggle('show', search.length>0); renderSongs(); });
- $('btnSrcX').addEventListener('click', function(){ $('iSrc').value=''; search=''; $('btnSrcX').classList.remove('show'); renderSongs(); });
-
-// ═══ HEADER ═══
- $('btnAlert').addEventListener('click', function(){ var m=prompt("Aviso para a banda:"); if(m&&m.trim()) toast(m.trim(), 'alert'); });
-
-async function toggleWake(){
-  try{
-    if(wakeLock){ await wakeLock.release(); wakeLock=null; $('btnWake').classList.remove('on'); toast('Tela pode apagar','info'); }
-    else{ wakeLock=await navigator.wakeLock.request('screen'); $('btnWake').classList.add('on'); toast('Tela sempre acesa','ok'); wakeLock.addEventListener('release',function(){$('btnWake').classList.remove('on');}); }
-  } catch(e){}
-}
- $('btnWake').addEventListener('click', toggleWake);
-document.addEventListener('visibilitychange', async function(){ if(wakeLock&&document.visibilityState==='visible'){ try{wakeLock=await navigator.wakeLock.request('screen');}catch(e){} }});
-
-// ═══ PDF ═══
- $('btnPdf').addEventListener('click', function(){
-  if(!songs.length){ toast('Sem músicas','err'); return; }
-  var P=window.jspdf.jsPDF, doc=new P({unit:'mm',format:'a4'});
-  var pw=doc.internal.pageSize.getWidth(), m=15, y=15;
-  doc.setFillColor(5,5,8); doc.rect(0,0,pw,32,'F');
-  doc.setTextColor(10,132,255); doc.setFontSize(22); doc.setFont('helvetica','bold'); doc.text('SETLIST',m,y);
-  doc.setTextColor(142,142,147); doc.setFontSize(10); doc.setFont('helvetica','normal');
-  doc.text(new Date().toLocaleDateString('pt-BR'),pw-m,y,{align:'right'});
-  if(user) doc.text(safeStr(user.name),pw/2,y,{align:'center'});
-  y=42;
-  var grps = activeCat==='all' ? cats : cats.filter(function(c){ return c.id===activeCat; });
-  function grp(list,title){
-    if(y>260){doc.addPage();y=20;}
-    doc.setFillColor(10,132,255); doc.rect(m,y,pw-m*2,7,'F');
-    doc.setTextColor(255,255,255); doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.text(title.toUpperCase(),m+4,y+5); y+=12;
-    for(var i=0;i<list.length;i++){
-      var s=list[i]; if(!s) continue;
-      if(y>275){doc.addPage();y=20;}
-      doc.setTextColor(245,245,247); doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.text(safeStr(s.name),m+4,y+3);
-      doc.setTextColor(255,200,0); doc.text(safeStr(s.tom),pw-m-doc.getTextWidth(safeStr(s.tom)),y+3);
-      if(s.artist){doc.setTextColor(142,142,147);doc.setFontSize(9);doc.setFont('helvetica','normal');doc.text(safeStr(s.artist),m+4,y+8);y+=14;}else y+=11;
-    }
-    y+=8;
-  }
-  if(!grps.length) grp(songs,'Geral');
-  else for(var g=0;g<grps.length;g++){ var ls=songs.filter(function(s){return s.category_id===grps[g].id;}); if(ls.length) grp(ls,grps[g].name); }
-  doc.save('SetList.pdf');
-  toast('PDF exportado','ok');
-});
-
-// ═══ PROFILE ═══
- $('btnProf').addEventListener('click', function(){ setUserUI(); updateStats(); so('soProf', true); });
- $('btnXProf').addEventListener('click', function(){ so('soProf', false); });
- $('soProf').addEventListener('click', function(e){ if(e.target===$('soProf')) so('soProf', false); });
-
- $('btnUpdN').addEventListener('click', async function(){
-  var n = $('pNI').value.trim();
-  if(!n) return;
-  try {
-    var r = await sb.auth.updateUser({data:{name:n}});
-    if(r && r.error) toast(r.error.message, 'err');
-    else { user.name = n; setUserUI(); toast('Nome atualizado', 'ok'); }
-  } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
-});
-
- $('btnExp').addEventListener('click', function(){
-  var bk = {
-    exported_at: new Date().toISOString(),
-    user: user ? user.name : '',
-    categories: cats,
-    songs: songs.map(function(s){ return {name:s.name,tom:s.tom,artist:s.artist,category_name:s.category_name,sort_order:s.sort_order,lyrics:s.lyrics,obs:s.obs}; })
-  };
-  var b = new Blob([JSON.stringify(bk, null, 2)], {type:'application/json'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(b);
-  a.download = 'setlist_' + new Date().toISOString().slice(0,10) + '.json';
-  a.click();
-  toast('Backup baixado', 'ok');
-});
-
- $('btnImp').addEventListener('click', function(){ $('fImp').click(); });
- $('fImp').addEventListener('change', async function(e){
-  var f = e.target.files[0];
-  if(!f) return;
-  var rd = new FileReader();
-  rd.onload = async function(ev){
-    try {
-      var d = JSON.parse(ev.target.result);
-      if(!d.songs || !d.songs.length){ toast('Arquivo sem músicas', 'err'); return; }
-      if(!confirm('Importar ' + d.songs.length + ' músicas?')) return;
-      var cnt = 0;
-      if(d.categories && d.categories.length){
-        for(var i = 0; i < d.categories.length; i++){
-          var cn = safeStr(d.categories[i].name);
-          if(!cn) continue;
-          var exists = false;
-          for(var x = 0; x < cats.length; x++){ if(cats[x] && cats[x].name === cn){ exists = true; break; } }
-          if(!exists){
-            var r = await sb.from('categories').insert({user_id:user.id, name:cn, sort_order:safeInt(d.categories[i].sort_order)}).select().single();
-            if(r && r.data) cats.push({id:r.data.id, name:safeStr(r.data.name), sort_order:safeInt(r.data.sort_order)});
+    
+    function doConnect(url, key, callback){
+      try {
+        var client = window.supabase.createClient(url, key);
+        client.from('categories').select('id').limit(1).then(function(res){
+          if(res && res.error){
+            if((res.error.message || '').indexOf('does not exist') > -1){
+              callback(false, 'Conectou, mas as tabelas não existem. Rode o SQL no Supabase.');
+            } else {
+              callback(false, 'Erro: ' + res.error.message);
+            }
+            return;
           }
-        }
+          callback(true, null, client);
+        }).catch(function(err){
+          callback(false, 'Falha: ' + (err.message || 'desconhecido'));
+        });
+      } catch(err){
+        callback(false, 'Erro: ' + (err.message || 'desconhecido'));
       }
-      for(var j = 0; j < d.songs.length; j++){
-        var s = d.songs[j];
-        var cid = null;
-        if(s.category_name){
-          for(var y = 0; y < cats.length; y++){ if(cats[y] && cats[y].name === s.category_name){ cid = cats[y].id; break; } }
-        }
-        var r2 = await sb.from('songs').insert({user_id:user.id, name:safeStr(s.name), tom:safeStr(s.tom)||'C', artist:safeStr(s.artist), category_id:cid, sort_order:safeInt(s.sort_order), lyrics:safeStr(s.lyrics), obs:safeStr(s.obs)}).select('*,categories(name)').single();
-        if(r2 && r2.data){
-          var catName2 = null;
-          if(r2.data.categories && typeof r2.data.categories === 'object' && r2.data.categories.name) catName2 = r2.data.categories.name;
-          songs.push({id:r2.data.id, name:safeStr(r2.data.name), tom:safeStr(r2.data.tom)||'C', artist:safeStr(r2.data.artist), category_id:r2.data.category_id, sort_order:safeInt(r2.data.sort_order), lyrics:safeStr(r2.data.lyrics), obs:safeStr(r2.data.obs), category_name:catName2});
-          cnt++;
-        }
-      }
-      updateStats(); render(); toast(cnt + ' músicas importadas', 'ok');
-    } catch(err){ toast('Arquivo inválido', 'err'); }
-  };
-  rd.readAsText(f);
-  e.target.value = '';
-});
-
- $('btnOut').addEventListener('click', async function(){
-  try { await sb.auth.signOut(); } catch(e){}
-  user=null; cats=[]; songs=[];
-  rtCh.forEach(function(c){ try{c.unsubscribe();}catch(e){} }); rtCh=[];
-  so('soProf', false);
-  showTela('telaAuth');
-  $('aEmail').value=''; $('aPass').value=''; $('aName').value='';
-  toast('Até logo!', 'info');
-});
-
- $('btnReset').addEventListener('click', function(){
-  if(!confirm('Apagar configuração do banco e desconectar?')) return;
-  localStorage.removeItem('sb_url');
-  localStorage.removeItem('sb_key');
-  sb=null; user=null; cats=[]; songs=[];
-  rtCh.forEach(function(c){ try{c.unsubscribe();}catch(e){} }); rtCh=[];
-  so('soProf', false);
-  showTela('telaSetup');
-  $('sUrl').value=''; $('sKey').value='';
-  toast('Resetado', 'info');
-});
-
-// ═══ AUTO-START ═══
-(async function(){
-  if(!savedUrl || !savedKey){
-    showTela('telaSetup');
-    return;
-  }
-
-  try {
-    sb = window.supabase.createClient(savedUrl, savedKey);
-  } catch(e){
-    showTela('telaSetup');
-    setupMsg('Erro ao criar cliente: ' + (e.message || 'desconhecido'), false);
-    return;
-  }
-
-  try {
-    var test = await sb.from('categories').select('id').limit(1);
-    if(test && test.error){
-      if((test.error.message || '').indexOf('does not exist') > -1){
-        showTela('telaSetup');
-        setupMsg('Conexão OK, mas as tabelas não existem. Rode o SQL no Supabase.', false);
-      } else {
-        showTela('telaSetup');
-        setupMsg('Erro no banco: ' + test.error.message, false);
-      }
-      return;
     }
-  } catch(e){
-    showTela('telaSetup');
-    setupMsg('Falha na conexão: ' + (e.message || 'desconhecido'), false);
-    return;
-  }
-
-  localStorage.setItem('sb_url', savedUrl);
-  localStorage.setItem('sb_key', savedKey);
-
-  try {
-    var sessionRes = await sb.auth.getSession();
-    if(sessionRes && sessionRes.data && sessionRes.data.session && sessionRes.data.session.user){
-      var u = sessionRes.data.session.user;
-      if(u && u.id){
-        var userName = '';
-        if(u.user_metadata && u.user_metadata.name) userName = u.user_metadata.name;
-        else if(u.email) userName = u.email.split('@')[0];
-        user = { id: u.id, email: safeStr(u.email), name: userName };
+    
+     $('btnSetup').addEventListener('click', function(){
+      var url = $('sUrl').value.trim().replace(/\/+$/, '');
+      var key = $('sKey').value.trim();
+      if(!url || !key){ setupMsg('Preencha URL e chave', false); return; }
+      $('btnSetup').disabled = true;
+      $('btnSetup').innerHTML = '<span class="spinning"></span> Testando...';
+      doConnect(url, key, function(ok, err, client){
+        $('btnSetup').disabled = false;
+        $('btnSetup').innerHTML = '<i class="fa-solid fa-plug"></i> Conectar';
+        if(ok){
+          localStorage.setItem('sb_url', url);
+          localStorage.setItem('sb_key', key);
+          savedUrl = url; savedKey = key;
+          sb = client;
+          wireAuthListener();
+          setupMsg('Conexão OK!', true);
+          setTimeout(function(){ showTela('telaAuth'); }, 500);
+        } else {
+          setupMsg(err, false);
+        }
+      });
+    });
+    
+    // ═══ AUTH ═══
+    function flipAuth(){
+      $('fName').classList.toggle('hid', !isReg);
+      $('btnAuthTxt').textContent = isReg ? 'Criar Conta' : 'Entrar';
+      $('aFlip').innerHTML = isReg
+        ? 'Já tem conta? <a id="aFlipLnk">Fazer login</a>'
+        : 'Não tem conta? <a id="aFlipLnk">Cadastre-se</a>';
+      $('aFlipLnk').addEventListener('click', function(){ isReg = !isReg; flipAuth(); });
+    }
+    flipAuth();
+    
+    function authErr(msg){
+      $('aErr').querySelector('span').textContent = msg;
+      $('aErr').classList.add('show');
+      setTimeout(function(){ $('aErr').classList.remove('show'); }, 5000);
+    }
+    
+    function userFromAuth(u){
+      var userName = '';
+      if(u.user_metadata && u.user_metadata.name) userName = u.user_metadata.name;
+      else if(u.email) userName = u.email.split('@')[0];
+      return { id: u.id, email: safeStr(u.email), name: userName };
+    }
+    
+     $('btnAuth').addEventListener('click', async function(){
+      if(!sb){ authErr('Banco não conectado. Recarregue a página.'); return; }
+      var email = $('aEmail').value.trim();
+      var pass = $('aPass').value;
+      if(!email || !pass){ authErr('Preencha email e senha'); return; }
+      if(pass.length < 6){ authErr('Senha: mínimo 6 caracteres'); return; }
+    
+      var btn = $('btnAuth');
+      btn.disabled = true;
+      $('btnAuthTxt').innerHTML = '<span class="spinning"></span>';
+    
+      try {
+        var res;
+        if(isReg){
+          var name = $('aName').value.trim();
+          if(!name){
+            authErr('Preencha seu nome');
+            btn.disabled = false;
+            $('btnAuthTxt').textContent = 'Criar Conta';
+            return;
+          }
+          res = await sb.auth.signUp({ email: email, password: pass, options: { data: { name: name } } });
+        } else {
+          res = await sb.auth.signInWithPassword({ email: email, password: pass });
+        }
+    
+        var u = null;
+        if(res && res.data && res.data.user) u = res.data.user;
+        if(!u || !u.id){
+          authErr('Resposta inesperada do servidor');
+          btn.disabled = false;
+          $('btnAuthTxt').textContent = isReg ? 'Criar Conta' : 'Entrar';
+          return;
+        }
+    
+        user = userFromAuth(u);
         showTela('telaApp');
         await boot();
-        return;
+        toast('Bem-vindo, ' + user.name.split(' ')[0] + '!', 'ok');
+    
+      } catch(e){
+        var m = safeStr(e.message).replace(/\[.*?\]\s*/g, '');
+        if(m.indexOf('Invalid login') > -1) m = 'Email ou senha incorretos';
+        if(m.indexOf('already registered') > -1) m = 'Email já cadastrado. Faça login.';
+        authErr(m);
+      } finally {
+        btn.disabled = false;
+        $('btnAuthTxt').textContent = isReg ? 'Criar Conta' : 'Entrar';
+      }
+    });
+    
+    ['aEmail','aPass','aName'].forEach(function(id){
+      $(id).addEventListener('keydown', function(e){ if(e.key==='Enter') $('btnAuth').click(); });
+    });
+    
+    // ═══ STATUS / UI ═══
+    function setStatus(lbl, det, dot){
+      $('sLbl').textContent = lbl;
+      $('sDet').textContent = det || '';
+      $('sDot').className = 'sdot ' + (dot || '');
+    }
+    
+    function setUserUI(){
+      if(!user) return;
+      var ini = safeStr(user.name).charAt(0).toUpperCase() || 'U';
+      $('uAv').textContent = ini;
+      $('uNm').textContent = safeStr(user.name).split(' ')[0];
+      $('pAv').textContent = ini;
+      $('pNm').textContent = safeStr(user.name);
+      $('pEm').textContent = safeStr(user.email);
+      $('pNI').value = safeStr(user.name);
+    }
+    
+    function updateStats(){
+      $('st1').textContent = songs.length;
+      $('st2').textContent = cats.length;
+      $('st3').textContent = songs.filter(function(s){ return safeStr(s.lyrics).length > 0; }).length;
+    }
+    
+    // ═══ LOAD DO BANCO ═══
+    async function loadCats(){
+      if(!sb || !user || !user.id) return;
+      var r = await sb.from('categories').select('*').eq('user_id', user.id).order('sort_order',{ascending:true}).order('name',{ascending:true});
+      if(r && r.error) throw new Error(r.error.message);
+      var data = (r && r.data && Array.isArray(r.data)) ? r.data : [];
+      cats = data.map(function(c){
+        return {
+          id: c.id || '',
+          name: safeStr(c.name),
+          sort_order: safeInt(c.sort_order)
+        };
+      });
+    }
+    
+    async function loadSongs(){
+      if(!sb || !user || !user.id) return;
+      var r = await sb.from('songs').select('*, categories(name)').eq('user_id', user.id).order('sort_order',{ascending:true}).order('name',{ascending:true});
+      if(r && r.error) throw new Error(r.error.message);
+      var data = (r && r.data && Array.isArray(r.data)) ? r.data : [];
+      songs = data.map(function(s){
+        var catName = null;
+        if(s.categories && typeof s.categories === 'object' && s.categories.name) catName = s.categories.name;
+        return {
+          id: s.id || '',
+          name: safeStr(s.name),
+          tom: safeStr(s.tom) || 'C',
+          artist: safeStr(s.artist),
+          category_id: s.category_id || null,
+          sort_order: safeInt(s.sort_order),
+          lyrics: safeStr(s.lyrics),
+          obs: safeStr(s.obs),
+          category_name: catName
+        };
+      });
+    }
+    
+    // Assinatura dos dados: só re-renderiza se algo realmente mudou
+    function dataHash(){
+      var h = cats.length + ':' + songs.length;
+      for(var i=0;i<songs.length;i++){ var s=songs[i]; if(!s) continue; h += '|'+s.id+s.name+s.tom+safeStr(s.artist)+(s.category_id||'')+s.sort_order+safeStr(s.lyrics).length+safeStr(s.obs); }
+      for(var j=0;j<cats.length;j++){ var c=cats[j]; if(!c) continue; h += '|'+c.id+c.name+c.sort_order; }
+      return h;
+    }
+    
+    async function loadAll(silent){
+      await Promise.all([loadCats(), loadSongs()]);
+      updateStats();
+      var h = dataHash();
+      if(!silent || h !== lastHash){
+        render();
+        lastHash = h;
       }
     }
-  } catch(e){}
-
-  showTela('telaAuth');
-})();
-})();
-</script>
+    
+    // ═══ REALTIME + POLLING ═══
+    function scheduleReload(){
+      if(reloadT) clearTimeout(reloadT);
+      reloadT = setTimeout(async function(){
+        reloadT = null;
+        if(loadingData) return;
+        loadingData = true;
+        try { await loadAll(true); } catch(e){}
+        loadingData = false;
+      }, RT_DEBOUNCE);
+    }
+    
+    function stopRealtime(){
+      rtCh.forEach(function(c){ try{ sb.removeChannel(c); }catch(e){} });
+      rtCh = [];
+      if(pollTimer){ clearInterval(pollTimer); pollTimer = null; }
+      if(reloadT){ clearTimeout(reloadT); reloadT = null; }
+    }
+    
+    function wireRealtime(){
+      stopRealtime();
+      if(!sb || !user || !user.id) return;
+    
+      ['categories','songs'].forEach(function(tbl){
+        var ch = sb.channel('rt_' + user.id + '_' + tbl)
+          .on('postgres_changes', {
+            event: '*', schema: 'public', table: tbl,
+            filter: 'user_id=eq.' + user.id
+          }, function(){
+            if(!loadingData) scheduleReload();
+          })
+          .subscribe(function(status){
+            if(status === 'SUBSCRIBED'){
+              setStatus('Online','Tempo real','live');
+            } else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'){
+              setStatus('Instável','Reconectando...','wait');
+              setTimeout(function(){ try{ ch.subscribe(); }catch(e){} }, 4000);
+            } else if(status === 'CLOSED'){
+              setStatus('Modo polling', (POLL_MS/1000)+'s', 'wait');
+            }
+          });
+        rtCh.push(ch);
+      });
+    
+      startPolling();
+    }
+    
+    // Fallback: mesmo sem realtime, atualiza sozinho a cada X segundos
+    function startPolling(){
+      if(pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async function(){
+        if(document.visibilityState !== 'visible') return;
+        if(!user || !sb) return;
+        if(loadingData) return;
+        loadingData = true;
+        try { await loadAll(true); } catch(e){}
+        loadingData = false;
+      }, POLL_MS);
+    }
+    
+    // Ao voltar do segundo plano, atualiza na hora
+    document.addEventListener('visibilitychange', function(){
+      if(document.visibilityState === 'visible' && user && sb){ scheduleReload(); }
+    });
+    
+    // ═══ BOOT ═══
+    async function boot(){
+      if(!user || !user.id){ setStatus('Erro','Usuário inválido','off'); return; }
+      if(!sb){ setStatus('Erro','Sem conexão','off'); return; }
+      setUserUI();
+      setStatus('Conectando','Supabase','wait');
+      try {
+        await loadAll();
+        wireRealtime();
+        setStatus('Online','Tempo real','live');
+      } catch(e){
+        setStatus('Erro','Tente novamente','off');
+        toast('Erro ao carregar: ' + safeStr(e.message), 'err');
+      }
+    }
+    
+    // ═══ RENDER ═══
+    function renderChips(){
+      var el = $('chips');
+      if(!el) return;
+      el.innerHTML = '';
+      var a = document.createElement('div');
+      a.className = 'chip' + (activeCat==='all' ? ' sel' : '');
+      a.innerHTML = 'Todas <span class="chip-n">' + songs.length + '</span>';
+      a.onclick = function(){ activeCat='all'; renderSongs(); renderChips(); };
+      el.appendChild(a);
+    
+      for(var i = 0; i < cats.length; i++){
+        var c = cats[i];
+        if(!c || !c.id) continue;
+        var ch = document.createElement('div');
+        ch.className = 'chip' + (activeCat===c.id ? ' sel' : '');
+        var cnt = songs.filter(function(s){ return s.category_id === c.id; }).length;
+        ch.innerHTML = esc(c.name) + ' <span class="chip-n">' + cnt + '</span>';
+        (function(catId){
+          var ht = null;
+          ch.addEventListener('touchstart', function(){ ht=setTimeout(function(){ deleteCat(catId); }, 600); }, {passive:true});
+          ch.addEventListener('touchend', function(e){ clearTimeout(ht); activeCat=catId; renderSongs(); renderChips(); e.preventDefault(); });
+          ch.addEventListener('touchmove', function(){ clearTimeout(ht); }, {passive:true});
+          ch.addEventListener('click', function(){ activeCat=catId; renderSongs(); renderChips(); });
+          ch.addEventListener('contextmenu', function(e){ e.preventDefault(); deleteCat(catId); });
+        })(c.id);
+        el.appendChild(ch);
+      }
+    }
+    
+    function fillCatSel(){
+      var sel = $('iSC');
+      if(!sel) return;
+      var v = sel.value;
+      sel.innerHTML = '<option value="">Selecione...</option>';
+      for(var i = 0; i < cats.length; i++){
+        var c = cats[i];
+        if(!c || !c.id) continue;
+        var o = document.createElement('option');
+        o.value = c.id;
+        o.textContent = c.name;
+        sel.appendChild(o);
+      }
+      for(var j = 0; j < cats.length; j++){
+        if(cats[j] && cats[j].id === v){ sel.value = v; break; }
+      }
+    }
+    
+    function renderSongs(){
+      var list = filtered();
+      var el = $('sList');
+      if(!el) return;
+      el.innerHTML = '';
+      $('emSt').classList.toggle('hid', list.length > 0);
+      $('lB').textContent = list.length;
+    
+      var co = null;
+      for(var k = 0; k < cats.length; k++){
+        if(cats[k] && cats[k].id === activeCat){ co = cats[k]; break; }
+      }
+      $('lH').textContent = activeCat==='all' ? 'Músicas' : (co ? co.name : 'Músicas');
+    
+      if(!list.length && search){
+        $('emSt').innerHTML = '<i class="fa-solid fa-magnifying-glass"></i><p>Nenhum resultado para "<strong>'+esc(search)+'</strong>"</p>';
+        $('emSt').classList.remove('hid');
+      } else if(!list.length){
+        $('emSt').innerHTML = '<i class="fa-regular fa-folder-open"></i><p>Nenhuma música aqui.<br>Toque no <strong>+</strong> para começar.</p>';
+      }
+    
+      for(var i = 0; i < list.length; i++){
+        var s = list[i];
+        if(!s || !s.id) continue;
+        var hasL = safeStr(s.lyrics).length > 0;
+        var card = document.createElement('div');
+        card.className = 'card';
+        card.style.animationDelay = (i * 0.025) + 's';
+    
+        var sub = '';
+        if(s.artist) sub = '<div class="csub">' + (hasL ? '<i class="fa-solid fa-align-left"></i>' : '') + esc(s.artist) + '</div>';
+        else if(hasL) sub = '<div class="csub"><i class="fa-solid fa-align-left"></i> Letra</div>';
+    
+        card.innerHTML = '<div class="card-in"><div class="tom"><b>'+esc(s.tom)+'</b><small>tom</small></div><div class="cmeta"><div class="cname">'+esc(s.name)+'</div>'+sub+'</div><div class="ctools"><button class="tb ed"><i class="fa-solid fa-pen-to-square"></i></button><button class="tb dl"><i class="fa-regular fa-trash-can"></i></button></div></div>';
+    
+        (function(songId){
+          card.addEventListener('click', function(e){ if(!e.target.closest('.tb')) openViewer(songId); });
+          card.querySelector('.ed').addEventListener('click', function(e){ e.stopPropagation(); openSongForm(songId); });
+          card.querySelector('.dl').addEventListener('click', function(e){ e.stopPropagation(); deleteSong(songId); });
+        })(s.id);
+    
+        el.appendChild(card);
+      }
+    }
+    
+    function filtered(){
+      var list = activeCat==='all' ? songs.slice() : songs.filter(function(s){ return s.category_id === activeCat; });
+      if(search){
+        list = list.filter(function(s){
+          return (s.name && s.name.toLowerCase().indexOf(search) > -1) || (s.artist && s.artist.toLowerCase().indexOf(search) > -1);
+        });
+      }
+      return list;
+    }
+    
+    function render(){ renderChips(); renderSongs(); fillCatSel(); }
+    
+    // ═══ VIEWER ═══
+    function openViewer(id){
+      var s = null;
+      for(var i = 0; i < songs.length; i++){ if(songs[i] && songs[i].id === id){ s = songs[i]; break; } }
+      if(!s) return;
+      var hasL = safeStr(s.lyrics).length > 0;
+      $('vTitle').textContent = s.name;
+      var h = '<div class="vw-hero"><div class="vw-tom"><b>'+esc(s.tom)+'</b><small>tom</small></div><div class="vw-h1">'+esc(s.name)+'</div>';
+      if(s.artist) h += '<div class="vw-art">'+esc(s.artist)+'</div>';
+      if(s.category_name) h += '<div class="vw-cat">'+esc(s.category_name)+'</div>';
+      h += '</div>';
+      h += hasL
+        ? '<div class="vw-lyr" id="vLyr" style="font-size:'+vFontSize+'px">'+esc(s.lyrics)+'</div>'
+        : '<div class="vw-lyr no" id="vLyr">Sem letra cadastrada</div>';
+      if(s.obs) h += '<div class="vw-obs"><strong>Obs:</strong> '+esc(s.obs)+'</div>';
+      $('vBody').innerHTML = h;
+      $('vBody').scrollTop = 0;
+      $('viewer').classList.add('open');
+      $('vFbar').classList.remove('show');
+    }
+    
+     $('vClose').addEventListener('click', function(){ $('viewer').classList.remove('open'); $('vFbar').classList.remove('show'); });
+    var lt = 0;
+     $('vBody').addEventListener('touchend', function(){ var n=Date.now(); if(n-lt<300) $('viewer').classList.remove('open'); lt=n; });
+     $('vFont').addEventListener('click', function(){ $('vFbar').classList.toggle('show'); });
+     $('fUp').addEventListener('click', function(){
+      if(vFontSize < 40){ vFontSize += 2; var e=$('vLyr'); if(e) e.style.fontSize=vFontSize+'px'; $('fSz').textContent=vFontSize+'px'; }
+    });
+     $('fDn').addEventListener('click', function(){
+      if(vFontSize > 12){ vFontSize -= 2; var e=$('vLyr'); if(e) e.style.fontSize=vFontSize+'px'; $('fSz').textContent=vFontSize+'px'; }
+    });
+    
+    // ═══ CRUD: CATEGORIAS ═══
+    async function deleteCat(id){
+      if(!confirm('Excluir categoria?\nAs músicas não serão apagadas.')) return;
+      try {
+        await sb.from('songs').update({category_id:null}).eq('category_id', id).eq('user_id', user.id);
+        var r = await sb.from('categories').delete().eq('id', id).eq('user_id', user.id);
+        if(r && r.error){ toast(r.error.message, 'err'); return; }
+        if(activeCat === id) activeCat = 'all';
+        cats = cats.filter(function(c){ return c.id !== id; });
+        for(var i = 0; i < songs.length; i++){
+          if(songs[i] && songs[i].category_id === id){ songs[i].category_id = null; songs[i].category_name = null; }
+        }
+        updateStats(); render();
+        lastHash = dataHash();
+        toast('Categoria removida', 'ok');
+      } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
+    }
+    
+     $('btnAddCat').addEventListener('click', function(){ $('iCatN').value=''; so('soCat',true); setTimeout(function(){$('iCatN').focus();}, 350); });
+     $('btnXCat').addEventListener('click', function(){ so('soCat', false); });
+     $('soCat').addEventListener('click', function(e){ if(e.target===$('soCat')) so('soCat', false); });
+     $('iCatN').addEventListener('keydown', function(e){ if(e.key==='Enter') $('btnSaveCat').click(); });
+    
+     $('btnSaveCat').addEventListener('click', async function(){
+      var n = $('iCatN').value.trim();
+      if(!n){ toast('Digite um nome', 'err'); return; }
+      $('btnSaveCat').disabled = true;
+      try {
+        var maxO = 0;
+        for(var i = 0; i < cats.length; i++){ if(cats[i] && cats[i].sort_order > maxO) maxO = cats[i].sort_order; }
+        var r = await sb.from('categories').insert({user_id:user.id, name:n, sort_order:maxO+1}).select().single();
+        if(r && r.error){ toast(r.error.message, 'err'); }
+        else if(r && r.data){
+          cats.push({id:r.data.id, name:safeStr(r.data.name), sort_order:safeInt(r.data.sort_order)});
+          cats.sort(function(a,b){return(a.sort_order||0)-(b.sort_order||0);});
+          updateStats(); render();
+          lastHash = dataHash();
+          so('soCat',false);
+          toast('Categoria criada', 'ok');
+        }
+      } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
+      $('btnSaveCat').disabled = false;
+    });
+    
+    // ═══ CRUD: MÚSICAS ═══
+    async function deleteSong(id){
+      if(!confirm('Excluir esta música?')) return;
+      try {
+        var r = await sb.from('songs').delete().eq('id', id).eq('user_id', user.id);
+        if(r && r.error){ toast(r.error.message, 'err'); return; }
+        songs = songs.filter(function(x){ return x.id !== id; });
+        updateStats(); render();
+        lastHash = dataHash();
+        toast('Música removida', 'ok');
+      } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
+    }
+    
+    function openSongForm(id){
+      if(!cats.length){ toast('Crie uma categoria primeiro', 'err'); $('btnAddCat').click(); return; }
+      fillCatSel();
+      editingId = id || null;
+      if(editingId){
+        var s = null;
+        for(var i = 0; i < songs.length; i++){ if(songs[i] && songs[i].id === editingId){ s = songs[i]; break; } }
+        if(s){
+          $('songShT').innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Editar Música';
+          $('iSN').value = s.name || '';
+          $('iST').value = s.tom || '';
+          $('iSO').value = s.sort_order || 0;
+          $('iSA').value = s.artist || '';
+          $('iSC').value = s.category_id || '';
+          $('iSL').value = s.lyrics || '';
+          $('iSObs').value = s.obs || '';
+        }
+      } else {
+        $('songShT').innerHTML = '<i class="fa-solid fa-music"></i> Nova Música';
+        $('iSN').value = ''; $('iST').value = ''; $('iSO').value = '';
+        $('iSA').value = ''; $('iSC').value = ''; $('iSL').value = ''; $('iSObs').value = '';
+      }
+      checkSongForm();
+      so('soSong', true);
+    }
+    
+    function checkSongForm(){ $('btnSaveSong').disabled = !($('iSN').value.trim() && $('iST').value.trim()); }
+     $('iSN').addEventListener('input', checkSongForm);
+     $('iST').addEventListener('input', checkSongForm);
+     $('fab').addEventListener('click', function(){ openSongForm(null); });
+     $('btnXSong').addEventListener('click', function(){ so('soSong', false); });
+     $('soSong').addEventListener('click', function(e){ if(e.target===$('soSong')) so('soSong', false); });
+    
+     $('btnSaveSong').addEventListener('click', async function(){
+      var name = $('iSN').value.trim();
+      var tom = $('iST').value.trim();
+      if(!name || !tom) return;
+      $('btnSaveSong').disabled = true;
+      try {
+        var payload = {
+          user_id: user.id, name: name, tom: tom, artist: $('iSA').value.trim(),
+          category_id: $('iSC').value || null, sort_order: safeInt($('iSO').value),
+          lyrics: $('iSL').value.trim(), obs: $('iSObs').value.trim()
+        };
+        var r;
+        if(editingId){
+          r = await sb.from('songs').update(payload).eq('id', editingId).eq('user_id', user.id).select('*,categories(name)').single();
+        } else {
+          r = await sb.from('songs').insert(payload).select('*,categories(name)').single();
+        }
+        if(r && r.error){ toast(r.error.message, 'err'); }
+        else if(r && r.data){
+          var d = r.data;
+          var catName = null;
+          if(d.categories && typeof d.categories === 'object' && d.categories.name) catName = d.categories.name;
+          var obj = {
+            id: d.id || '', name: safeStr(d.name), tom: safeStr(d.tom) || 'C', artist: safeStr(d.artist),
+            category_id: d.category_id || null, sort_order: safeInt(d.sort_order),
+            lyrics: safeStr(d.lyrics), obs: safeStr(d.obs), category_name: catName
+          };
+          if(editingId){
+            for(var i = 0; i < songs.length; i++){ if(songs[i] && songs[i].id === editingId){ songs[i] = obj; break; } }
+          } else {
+            songs.push(obj);
+          }
+          so('soSong', false);
+          updateStats(); render();
+          lastHash = dataHash();
+          toast('Música salva', 'ok');
+        }
+      } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
+      $('btnSaveSong').disabled = false;
+      checkSongForm();
+    });
+    
+    // ═══ SEARCH ═══
+     $('iSrc').addEventListener('input', function(){ search=$('iSrc').value.trim().toLowerCase(); $('btnSrcX').classList.toggle('show', search.length>0); renderSongs(); });
+     $('btnSrcX').addEventListener('click', function(){ $('iSrc').value=''; search=''; $('btnSrcX').classList.remove('show'); renderSongs(); });
+    
+    // ═══ HEADER ═══
+     $('btnAlert').addEventListener('click', function(){ var m=prompt("Aviso para a banda:"); if(m&&m.trim()) toast(m.trim(), 'alert'); });
+    
+    async function toggleWake(){
+      try{
+        if(wakeLock){ await wakeLock.release(); wakeLock=null; $('btnWake').classList.remove('on'); toast('Tela pode apagar','info'); }
+        else{ wakeLock=await navigator.wakeLock.request('screen'); $('btnWake').classList.add('on'); toast('Tela sempre acesa','ok'); wakeLock.addEventListener('release',function(){$('btnWake').classList.remove('on');}); }
+      } catch(e){}
+    }
+     $('btnWake').addEventListener('click', toggleWake);
+    document.addEventListener('visibilitychange', async function(){ if(wakeLock&&document.visibilityState==='visible'){ try{wakeLock=await navigator.wakeLock.request('screen');}catch(e){} }});
+    
+    // ═══ PDF ═══
+     $('btnPdf').addEventListener('click', function(){
+      if(!songs.length){ toast('Sem músicas','err'); return; }
+      var P=window.jspdf.jsPDF, doc=new P({unit:'mm',format:'a4'});
+      var pw=doc.internal.pageSize.getWidth(), m=15, y=15;
+      doc.setFillColor(5,5,8); doc.rect(0,0,pw,32,'F');
+      doc.setTextColor(10,132,255); doc.setFontSize(22); doc.setFont('helvetica','bold'); doc.text('SETLIST',m,y);
+      doc.setTextColor(142,142,147); doc.setFontSize(10); doc.setFont('helvetica','normal');
+      doc.text(new Date().toLocaleDateString('pt-BR'),pw-m,y,{align:'right'});
+      if(user) doc.text(safeStr(user.name),pw/2,y,{align:'center'});
+      y=42;
+      var grps = activeCat==='all' ? cats : cats.filter(function(c){ return c.id===activeCat; });
+      function grp(list,title){
+        if(y>260){doc.addPage();y=20;}
+        doc.setFillColor(10,132,255); doc.rect(m,y,pw-m*2,7,'F');
+        doc.setTextColor(255,255,255); doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.text(title.toUpperCase(),m+4,y+5); y+=12;
+        for(var i=0;i<list.length;i++){
+          var s=list[i]; if(!s) continue;
+          if(y>275){doc.addPage();y=20;}
+          doc.setTextColor(245,245,247); doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.text(safeStr(s.name),m+4,y+3);
+          doc.setTextColor(255,200,0); doc.text(safeStr(s.tom),pw-m-doc.getTextWidth(safeStr(s.tom)),y+3);
+          if(s.artist){doc.setTextColor(142,142,147);doc.setFontSize(9);doc.setFont('helvetica','normal');doc.text(safeStr(s.artist),m+4,y+8);y+=14;}else y+=11;
+        }
+        y+=8;
+      }
+      if(!grps.length) grp(songs,'Geral');
+      else for(var g=0;g<grps.length;g++){ var ls=songs.filter(function(s){return s.category_id===grps[g].id;}); if(ls.length) grp(ls,grps[g].name); }
+      doc.save('SetList.pdf');
+      toast('PDF exportado','ok');
+    });
+    
+    // ═══ PROFILE ═══
+     $('btnProf').addEventListener('click', function(){ setUserUI(); updateStats(); so('soProf', true); });
+     $('btnXProf').addEventListener('click', function(){ so('soProf', false); });
+     $('soProf').addEventListener('click', function(e){ if(e.target===$('soProf')) so('soProf', false); });
+    
+     $('btnUpdN').addEventListener('click', async function(){
+      var n = $('pNI').value.trim();
+      if(!n){ toast('Digite um nome', 'err'); return; }
+      try {
+        var r = await sb.auth.updateUser({ data: { name: n } });
+        if(r && r.error){ toast(r.error.message, 'err'); }
+        else {
+          user.name = n;
+          setUserUI();
+          toast('Nome atualizado', 'ok');
+        }
+      } catch(e){ toast('Erro: ' + safeStr(e.message), 'err'); }
+    });
+    
+    // Exportar backup (JSON)
+     $('btnExp').addEventListener('click', function(){
+      if(!cats.length && !songs.length){ toast('Nada para exportar', 'err'); return; }
+      var data = { exported_at: new Date().toISOString(), categories: cats, songs: songs };
+      var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'setlist-backup-' + new Date().toISOString().slice(0,10) + '.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+      toast('Backup exportado', 'ok');
+    });
+    
+    // Importar backup (JSON)
+     $('btnImp').addEventListener('click', function(){ $('fImp').click(); });
+     $('fImp').addEventListener('change', async function(e){
+      var file = e.target.files && e.target.files[0];
+      if(!file) return;
+      try {
+        var txt = await file.text();
+        var data = JSON.parse(txt);
+        var importCats = (data && Array.isArray(data.categories)) ? data.categories : [];
+        var importSongs = (data && Array.isArray(data.songs)) ? data.songs : [];
+        if(!importCats.length && !importSongs.length){ toast('Backup vazio ou inválido', 'err'); return; }
+        if(!confirm('Importar ' + importSongs.length + ' músicas e ' + importCats.length + ' categorias?\nItentes já existentes (mesmo nome e tom) serão pulados.')) return;
+    
+        var catMap = {};
+        for(var i=0;i<importCats.length;i++){
+          var c = importCats[i];
+          if(!c || !c.name) continue;
+          var exist = null;
+          for(var j=0;j<cats.length;j++){ if(cats[j] && cats[j].name === c.name){ exist = cats[j]; break; } }
+          if(exist){ catMap[c.id] = exist.id; continue; }
+          var r = await sb.from('categories').insert({ user_id: user.id, name: c.name, sort_order: safeInt(c.sort_order) }).select().single();
+          if(r && r.error){ continue; }
+          var nc = { id: r.data.id, name: safeStr(r.data.name), sort_order: safeInt(r.data.sort_order) };
+          cats.push(nc);
+          catMap[c.id] = nc.id;
+        }
+    
+        var toInsert = [];
+        for(var k=0;k<importSongs.length;k++){
+          var s = importSongs[k];
+          if(!s || !s.name) continue;
+          var dup = false;
+          for(var m=0;m<songs.length;m++){ if(songs[m] && songs[m].name === s.name && songs[m].tom === (s.tom||'C')){ dup = true; break; } }
+          if(dup) continue;
+          toInsert.push({
+            user_id: user.id, name: safeStr(s.name), tom: safeStr(s.tom) || 'C',
+            artist: safeStr(s.artist),
+            category_id: (s.category_id && catMap[s.category_id]) ? catMap[s.category_id] : null,
+            sort_order: safeInt(s.sort_order), lyrics: safeStr(s.lyrics), obs: safeStr(s.obs)
+          });
+        }
+        if(toInsert.length){
+          var rs = await sb.from('songs').insert(toInsert);
+          if(rs && rs.error){ toast(rs.error.message, 'err'); return; }
+        }
+        await loadAll();
+        toast('Importado: ' + toInsert.length + ' músicas', 'ok');
+      } catch(err){
+        toast('Arquivo inválido', 'err');
+      }
+      $('fImp').value = '';
+    });
+    
+    // Sair
+     $('btnOut').addEventListener('click', async function(){
+      try { await sb.auth.signOut(); } catch(e){}
+      stopRealtime();
+      user = null; cats = []; songs = [];
+      showTela('telaAuth');
+    });
+    
+    // Trocar banco
+     $('btnReset').addEventListener('click', function(){
+      if(!confirm('Trocar de banco Supabase?\nVocê voltará para a tela de configuração.')) return;
+      so('soProf', false);
+      stopRealtime();
+      localStorage.removeItem('sb_url');
+      localStorage.removeItem('sb_key');
+      sb = null; user = null; cats = []; songs = [];
+      showTela('telaSetup');
+    });
+    
+    // ═══ AUTH LISTENER (sign-out em outra aba etc.) ═══
+    function wireAuthListener(){
+      if(!sb) return;
+      sb.auth.onAuthStateChange(function(event, session){
+        if(event === 'SIGNED_OUT'){
+          stopRealtime();
+          user = null; cats = []; songs = [];
+          showTela('telaAuth');
+        }
+      });
+    }
+    
+    // ═══ INICIALIZAÇÃO: conecta e restaura sessão salva ═══
+    showTela('telaSetup');
+    (async function init(){
+      try {
+        var client = window.supabase.createClient(savedUrl, savedKey);
+        var test = await client.from('categories').select('id').limit(1);
+        if(test && test.error){ return; } // fica na tela de setup
+        sb = client;
+        wireAuthListener();
+        var ss = await sb.auth.getSession();
+        var sess = ss && ss.data && ss.data.session;
+        if(sess && sess.user){
+          user = userFromAuth(sess.user);
+          showTela('telaApp');
+          await boot();
+        } else {
+          showTela('telaAuth');
+        }
+      } catch(e){
+        // sem conexão — fica na tela de setup
+      }
+    })();
+    
+    })();
+    </script>
 </body>
 </html>
